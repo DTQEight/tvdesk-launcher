@@ -46,6 +46,34 @@ public final class JellyfinClient {
         }
     }
 
+    private static android.content.Context appCtx;
+
+    /** 由 Application 调用，用于离线缓存。 */
+    public static void init(android.content.Context ctx) {
+        appCtx = ctx.getApplicationContext();
+    }
+
+    private static void saveCache(String name, String text) {
+        if (appCtx == null || text == null) return;
+        try {
+            java.io.FileOutputStream fo = new java.io.FileOutputStream(
+                    new java.io.File(appCtx.getCacheDir(), name));
+            fo.write(text.getBytes("UTF-8"));
+            fo.close();
+        } catch (Throwable ignored) { }
+    }
+
+    private static String readCache(String name) {
+        if (appCtx == null) return null;
+        try {
+            java.io.File f = new java.io.File(appCtx.getCacheDir(), name);
+            if (!f.exists()) return null;
+            return new String(java.nio.file.Files.readAllBytes(f.toPath()), "UTF-8");
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     private static HttpURLConnection open(String url) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setRequestProperty("Authorization", "MediaBrowser Token=\"" + TOKEN + "\"");
@@ -57,36 +85,54 @@ public final class JellyfinClient {
 
     /** 取某媒体库里的剧集，按添加时间倒序。 */
     public static List<Item> series(String libraryId, int limit) {
-        List<Item> out = new ArrayList<>();
+        String raw = fetchJson(BASE + "/Items?ParentId=" + libraryId
+                + "&IncludeItemTypes=Series&Recursive=true"
+                + "&Fields=ProductionYear&ImageTypeLimit=1&EnableImageTypes=Primary"
+                + "&SortBy=DateCreated&SortOrder=Descending&Limit=" + limit, "cache_series.json");
+        List<Item> out = parseItems(raw);
+        Log.i(TAG, "series=" + out.size());
+        return out;
+    }
+
+    /** GET 一个 JSON；失败时回退到本地缓存（离线可用）。 */
+    private static String fetchJson(String url, String cacheName) {
         HttpURLConnection c = null;
         BufferedReader r = null;
         try {
-            String url = BASE + "/Items?ParentId=" + libraryId
-                    + "&IncludeItemTypes=Series&Recursive=true"
-                    + "&Fields=ProductionYear&ImageTypeLimit=1&EnableImageTypes=Primary"
-                    + "&SortBy=DateCreated&SortOrder=Descending&Limit=" + limit;
             c = open(url);
-            if (c.getResponseCode() != 200) { Log.w(TAG, "http " + c.getResponseCode()); return out; }
+            if (c.getResponseCode() != 200) { Log.w(TAG, "http " + c.getResponseCode()); return readCache(cacheName); }
             r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = r.readLine()) != null) sb.append(line);
-            JSONObject root = new JSONObject(sb.toString());
+            String text = sb.toString();
+            saveCache(cacheName, text);
+            return text;
+        } catch (Throwable t) {
+            Log.w(TAG, "fetch failed, use cache " + t);
+            return readCache(cacheName);
+        } finally {
+            try { if (r != null) r.close(); } catch (Throwable ignored) { }
+            try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
+        }
+    }
+
+    private static List<Item> parseItems(String raw) {
+        List<Item> out = new ArrayList<>();
+        if (raw == null) return out;
+        try {
+            JSONObject root = new JSONObject(raw);
             JSONArray items = root.optJSONArray("Items");
             if (items == null) return out;
             for (int i = 0; i < items.length(); i++) {
                 JSONObject o = items.getJSONObject(i);
                 JSONObject tags = o.optJSONObject("ImageTags");
                 String tag = tags == null ? null : tags.optString("Primary", null);
-                int year = o.optInt("ProductionYear", 0);
-                out.add(new Item(o.optString("Id"), o.optString("Name"), tag, year, null, false));
+                out.add(new Item(o.optString("Id"), o.optString("Name"), tag,
+                        o.optInt("ProductionYear", 0), null, false));
             }
-            Log.i(TAG, "series=" + out.size());
         } catch (Throwable t) {
-            Log.e(TAG, "series failed " + t);
-        } finally {
-            try { if (r != null) r.close(); } catch (Throwable ignored) { }
-            try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
+            Log.w(TAG, "parse failed " + t);
         }
         return out;
     }

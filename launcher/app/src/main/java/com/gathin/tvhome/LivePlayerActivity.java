@@ -41,6 +41,9 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
     private int index = -1;
     private int jump;
     private int retry;
+    /** 失效频道（url 集合），播放失败后记下来，列表里标 ✕。 */
+    private final java.util.Set<String> deadChannels = new java.util.HashSet<>();
+
     private String wantName;
     private String autoPrefix;   // 自动换源用：频道名前缀
     private int autoTries, autoSkip;
@@ -85,6 +88,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
         new Thread(new Runnable() {
             @Override public void run() {
                 final List<LiveSource.Ch> list = LiveSource.load(getApplicationContext());
+                deadChannels.addAll(getSharedPreferences("tvdesk_dead", MODE_PRIVATE).getStringSet("urls", new java.util.HashSet<String>()));
                 final LinkedHashMap<String, List<LiveSource.Ch>> map = LiveSource.categories(list);
                 runOnUiThread(new Runnable() {
                     @Override public void run() {
@@ -163,7 +167,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
         List<LiveSource.Ch> list = cats.get(curCat);
         if (list == null) list = channels;
         List<String> names = new ArrayList<>();
-        for (LiveSource.Ch c : list) names.add(c.name);
+        for (LiveSource.Ch c : list) names.add((deadChannels.contains(c.url) ? "✕ " : "") + c.name);
         final List<LiveSource.Ch> shown = list;
         chList.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, names) {
             @Override public View getView(int p, View cv, ViewGroup parent) {
@@ -253,6 +257,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
                         }, 1200L);
                     } else {
                         showOsd("播放失败（" + what + "）");
+                        markDead(channels.get(index).url);
                     }
                     return true;
                 }
@@ -274,6 +279,16 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
             }
         }
         return -1;
+    }
+
+
+    private void markDead(String url) {
+        try {
+            deadChannels.add(url);
+            java.util.Set<String> copy = new java.util.HashSet<>(deadChannels);
+            getSharedPreferences("tvdesk_dead", MODE_PRIVATE).edit()
+                    .putStringSet("urls", copy).apply();
+        } catch (Throwable ignored) { }
     }
 
 
