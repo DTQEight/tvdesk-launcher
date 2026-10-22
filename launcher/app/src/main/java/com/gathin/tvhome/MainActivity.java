@@ -1143,8 +1143,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(android.view.Gravity.CENTER);
         android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-        bg.setColor(0xFF18222C);
+        bg.setColor(0x5718222C); // 半透明，让背景图透出来
         bg.setCornerRadius(dp(25));
+        bg.setStroke(dp(1), 0x33FFFFFF);
         box.setBackground(bg);
         box.setFocusable(true);
         box.setFocusableInTouchMode(true);
@@ -1230,7 +1231,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     if (shelfCells == null) shelfCells = new View[4];
                     shelfCells[i] = cell;
                     android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-                    bg.setColor(0xFF141C24);
+        bg.setColor(0xFF141C24);
                     bg.setCornerRadius(dp(10));
                     cell.setBackground(bg);
                     cell.setClipToOutline(true);
