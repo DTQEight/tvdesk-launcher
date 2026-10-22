@@ -63,6 +63,15 @@ public final class LivePreview {
         release();
     }
 
+    /** 预览是否在正常播放（黑屏看护用）。 */
+    public boolean isPlaying() {
+        try {
+            return player != null && player.isPlaying() && player.getDuration() > 0;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     public void release() {
         if (player != null) {
             try { player.stop(); } catch (Throwable ignored) { }

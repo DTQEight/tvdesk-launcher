@@ -117,6 +117,23 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private String liveTvAction;
 
     /** 屏保/空闲时停掉预览（方法体内可以引用后面声明的字段）。 */
+
+    /** 预览黑屏看护：8 秒还没在播就重启一次预览。 */
+    private final Runnable previewWatchdog = new Runnable() {
+        @Override public void run() {
+            try {
+                if (livePreview == null || liveSurface == null) return;
+                if (!TVDeskPrefs.preview(MainActivity.this)) return;
+                if (!livePreview.isPlaying() && liveSurface.getHolder().getSurface() != null
+                        && liveSurface.getHolder().getSurface().isValid()) {
+                    android.util.Log.w("CYT-LIVE", "preview stalled, restarting");
+                    startLive(liveSurface.getHolder());
+                }
+            } catch (Throwable ignored) { }
+            handler.postDelayed(this, 20000L);
+        }
+    };
+
     private void stopPreviewForIdle() {
         if (livePreview != null) livePreview.stop();
     }
@@ -693,6 +710,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
+        // 回桌面后延迟再释放一次信号源（HDMI 的黑色视频面偶尔会盖在桌面上）
+        handler.postDelayed(new Runnable() {
+            @Override public void run() { try { SourceSwitcher.releaseSource(MainActivity.this); } catch (Throwable ignored) { } }
+        }, 1200L);
+        handler.removeCallbacks(previewWatchdog);
+        handler.postDelayed(previewWatchdog, 8000L);
         // 回到桌面：释放电视信号源，否则 HDMI 的声音会继续在后台响
         try { SourceSwitcher.releaseSource(this); } catch (Throwable ignored) { }
         if (!shelfLoaded) loadShelf();
