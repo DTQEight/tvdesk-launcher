@@ -164,6 +164,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean shelfLoaded;
     private final LinearLayout[] tabsRight = new LinearLayout[2];
     private LinearLayout tabRecent;
+    private TextView weatherView;
     private java.util.List<JellyfinClient.Item> shelfAll;
     private android.graphics.Bitmap[] shelfBitmaps;
     private int shelfOffset;
@@ -598,6 +599,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         installLive();
         armHomeProps();
         installShelf();
+        installWeather();
         installTopTabs();
         wireFocus();
 
@@ -926,6 +928,44 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     /** 预览窗右侧的四格海报墙（Jellyfin 国产剧）。 */
     /** 左：输入源两个独立 tab（HDMI1 / HDMI2）；右：最近观看 + 一个待定 tab。 */
+    /** 左上角天气（时钟下方）：IP 定位 + Open-Meteo，30 分钟刷新一次。 */
+    private void installWeather() {
+        try {
+            weatherView = new TextView(this);
+            weatherView.setTextColor(0xFF9FB0C0);
+            weatherView.setTextSize(15);
+            weatherView.setText("天气加载中…");
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+            lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
+            lp.leftMargin = dp(172);
+            lp.topMargin = dp(48);
+            root.addView(weatherView, lp);
+            loadWeather();
+        } catch (Throwable t) {
+            android.util.Log.e("CYT-WEATHER", "installWeather failed " + t);
+        }
+    }
+
+    private void loadWeather() {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final String w = Weather.fetch();
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (weatherView == null) return;
+                        if (w != null) weatherView.setText(w);
+                        else if ("天气加载中…".contentEquals(weatherView.getText())) weatherView.setText("");
+                    }
+                });
+            }
+        }, "cyt-weather").start();
+        handler.postDelayed(new Runnable() {
+            @Override public void run() { loadWeather(); }
+        }, 30 * 60 * 1000L);
+    }
+
+
     /** 右上方两个 tab：最近观看（带集数/进度副标题）+ 待定。 */
     private void installTopTabs() {
         try {
