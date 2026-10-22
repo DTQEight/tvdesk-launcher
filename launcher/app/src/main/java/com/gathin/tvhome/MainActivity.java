@@ -1107,6 +1107,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             rlp.rightMargin = dp(60);
             rlp.topMargin = dp(128);
             root.addView(rightTabs, rlp);
+
+            // 四个 tab 连成一行，左右键能一路走过去（原来 HDMI1 右键会跳到预览）
+            View t1 = tabsLeft[0], t2 = tabsLeft[1];
+            View r1 = tabsRight[0], r2 = tabsRight[1];
+            t1.setNextFocusRightId(t2.getId());
+            t2.setNextFocusRightId(r1.getId());
+            r1.setNextFocusRightId(r2.getId());
+            r2.setNextFocusLeftId(r1.getId());
+            r1.setNextFocusLeftId(t2.getId());
+            t2.setNextFocusLeftId(t1.getId());
         } catch (Throwable t) {
             android.util.Log.e("CYT-TAB", "installTopTabs failed " + t);
         }
@@ -1143,16 +1153,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(android.view.Gravity.CENTER);
-        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-        bg.setColor(0x5718222C); // 半透明，让背景图透出来
-        bg.setCornerRadius(dp(25));
-        bg.setStroke(dp(1), 0x33FFFFFF);
-        box.setBackground(bg);
+        box.setBackground(tabBackground(false));
         box.setFocusable(true);
         box.setFocusableInTouchMode(true);
         box.setId(android.view.View.generateViewId());
 
-        TextView t = new TextView(this);
+        final TextView t = new TextView(this);
         t.setText(title);
         t.setTextColor(0xFFE6EEF5);
         t.setTextSize(16);
@@ -1161,22 +1167,29 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         box.addView(t, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
+        TextView subTmp = null;
         if (sub != null && !sub.isEmpty()) {
-            TextView s = new TextView(this);
-            s.setText(sub);
-            s.setTextColor(0xFF8FA6B8);
-            s.setTextSize(11);
-            s.setGravity(android.view.Gravity.CENTER);
-            s.setSingleLine(true);
+            subTmp = new TextView(this);
+            subTmp.setText(sub);
+            subTmp.setTextColor(0xFF8FA6B8);
+            subTmp.setTextSize(11);
+            subTmp.setGravity(android.view.Gravity.CENTER);
+            subTmp.setSingleLine(true);
             LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             slp.topMargin = dp(2);
-            box.addView(s, slp);
+            box.addView(subTmp, slp);
         }
+        final TextView sView = subTmp;
 
+        // 焦点态：白底 + 深色字 + 3dp 蓝边 + 放大，远看也一眼看到
         box.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override public void onFocusChange(View v, boolean has) {
-                v.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(140).start();
+                v.setBackground(tabBackground(has));
+                t.setTextColor(has ? 0xFF0B1116 : 0xFFE6EEF5);
+                if (sView != null) sView.setTextColor(has ? 0xFF3C4A57 : 0xFF8FA6B8);
+                v.animate().scaleX(has ? 1.07f : 1f).scaleY(has ? 1.07f : 1f)
+                        .setDuration(140).start();
             }
         });
         if (action != null) {
@@ -1186,9 +1199,22 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.MATCH_PARENT, 1f);
-        lp.rightMargin = 0;
         parent.addView(box, lp);
         return box;
+    }
+
+    /** tab 的常态/焦点态背景。 */
+    private android.graphics.drawable.GradientDrawable tabBackground(boolean focused) {
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setCornerRadius(dp(25));
+        if (focused) {
+            d.setColor(0xFFFFFFFF);
+            d.setStroke(dp(3), 0xFF00A4DC);
+        } else {
+            d.setColor(0x5718222C);
+            d.setStroke(dp(1), 0x33FFFFFF);
+        }
+        return d;
     }
 
     /** 更新「最近观看」的副标题（集数 + 进度）。 */
