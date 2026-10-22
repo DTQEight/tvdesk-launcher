@@ -953,7 +953,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             View dim = new View(this);
             dim.setBackground(new android.graphics.drawable.GradientDrawable(
                     android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                    new int[]{0x8C000000, 0xB0000000}));
+                    new int[]{0x5A000000, 0x8A000000}));
             root.addView(dim, 2, full);
 
             new Thread(new Runnable() {
@@ -1258,7 +1258,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     if (shelfCells == null) shelfCells = new View[4];
                     shelfCells[i] = cell;
                     android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-        bg.setColor(0xFF141C24);
+        bg.setColor(0x00000000);
                     bg.setCornerRadius(dp(10));
                     cell.setBackground(bg);
                     cell.setClipToOutline(true);
@@ -1284,7 +1284,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
                     tv.setPadding(dp(12), dp(8), dp(12), dp(10));
                     tv.setGravity(android.view.Gravity.CENTER);
-                    tv.setBackgroundColor(0xFF141C24);
+                    tv.setBackgroundColor(0x8C0E1620);
                     try {
                         tv.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(
                                 this, R.font.outfit_medium));
@@ -1454,7 +1454,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             FrameLayout box = new FrameLayout(this);
             box.setId(android.view.View.generateViewId());
             liveBox = box;
-            box.setBackgroundColor(0xFF0A1118);
+            box.setBackgroundColor(0x00000000);
             liveSurface = new SurfaceView(this);
             box.addView(liveSurface, new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));

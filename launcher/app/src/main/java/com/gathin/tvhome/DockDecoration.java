@@ -29,10 +29,10 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
         this.dockSize = dockSize;
         this.density = density;
         this.namesRoom = names ? 22 * density : 0;
-        band.setColor(translucent ? 0x8C121014 : 0xFF141416);
+        band.setColor(0x80121014);   // 半透明，让背景图透到 Dock 上
         edge.setStyle(Paint.Style.STROKE);
         edge.setStrokeWidth(density);
-        edge.setColor(translucent ? 0x26FFFFFF : 0x1FFFFFFF);
+        edge.setColor(0x26FFFFFF);
     }
 
     @Override
