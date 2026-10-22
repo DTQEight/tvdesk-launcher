@@ -175,6 +175,16 @@ public final class JellyfinClient {
     public static Bitmap poster(String url, int maxH) {
         HttpURLConnection c = null;
         InputStream in = null;
+        // 先看磁盘缓存（appCtx 在 Application 里初始化）
+        if (appCtx != null) {
+            try {
+                java.io.File f = posterCacheFile(url);
+                if (f != null && f.exists()) {
+                    Bitmap cached = android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath());
+                    if (cached != null) return cached;
+                }
+            } catch (Throwable ignored) { }
+        }
         try {
             c = open(url);
             c.setRequestProperty("Accept", "image/*");
@@ -194,7 +204,9 @@ public final class JellyfinClient {
             in = c.getInputStream();
             BitmapFactory.Options opts = new BitmapFactory.Options();
             opts.inSampleSize = sample;
-            return BitmapFactory.decodeStream(in, null, opts);
+            Bitmap out = BitmapFactory.decodeStream(in, null, opts);
+            savePosterCache(url, out);
+            return out;
         } catch (Throwable t) {
             Log.e(TAG, "poster failed " + t);
             return null;
@@ -410,5 +422,26 @@ public final class JellyfinClient {
         post("/Sessions/Playing/Stopped", "{\"ItemId\":\"" + itemId + "\",\"MediaSourceId\":\"" + itemId
                 + "\",\"PositionTicks\":" + (posMs * 10000L) + "}");
         updateUserData(itemId, posMs);
+    }
+
+    private static java.io.File posterCacheFile(String url) {
+        if (appCtx == null) return null;
+        try {
+            java.io.File dir = new java.io.File(appCtx.getCacheDir(), "posters");
+            if (!dir.exists()) dir.mkdirs();
+            return new java.io.File(dir, Integer.toHexString(url.hashCode()) + ".jpg");
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static void savePosterCache(String url, Bitmap bm) {
+        try {
+            java.io.File f = posterCacheFile(url);
+            if (f == null || bm == null) return;
+            java.io.FileOutputStream fo = new java.io.FileOutputStream(f);
+            bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, fo);
+            fo.close();
+        } catch (Throwable ignored) { }
     }
 }
