@@ -1142,39 +1142,32 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     cell.setFocusable(true);
                     cell.setFocusableInTouchMode(true);
 
+                    // 海报在上、片名在下（Netflix 风格，图上不压字）
+                    LinearLayout innerCol = new LinearLayout(this);
+                    innerCol.setOrientation(LinearLayout.VERTICAL);
+                    cell.addView(innerCol, new FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
                     ImageView img = new ImageView(this);
                     img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    cell.addView(img, new FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+                    innerCol.addView(img, new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
                     posters[i] = img;
 
-                    // 底部渐变遮罩（比纯黑条柔和）
-                    View scrim = new View(this);
-                    scrim.setBackground(new android.graphics.drawable.GradientDrawable(
-                            android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
-                            new int[]{0xF2000000, 0x00000000}));
-                    FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT, dp(96));
-                    slp.gravity = android.view.Gravity.BOTTOM;
-                    cell.addView(scrim, slp);
-
                     TextView tv = new TextView(this);
-                    tv.setTextColor(0xFFFFFFFF);
-                    tv.setTextSize(19);
+                    tv.setTextColor(0xFFE6EEF5);
+                    tv.setTextSize(16);
                     tv.setSingleLine(true);
                     tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                    tv.setPadding(dp(18), 0, dp(18), dp(16));
-                    tv.setGravity(android.view.Gravity.BOTTOM | android.view.Gravity.START);
-                    tv.setLetterSpacing(0.04f);
-                    tv.setShadowLayer(dp(6), 0, dp(1), 0xE6000000);
+                    tv.setPadding(dp(12), dp(8), dp(12), dp(10));
+                    tv.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                    tv.setBackgroundColor(0xFF141C24);
                     try {
                         tv.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(
                                 this, R.font.outfit_medium));
                     } catch (Throwable ignored) { }
-                    FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT, dp(72));
-                    tlp.gravity = android.view.Gravity.BOTTOM;
-                    cell.addView(tv, tlp);
+                    innerCol.addView(tv, new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT, dp(38)));
                     labels[i] = tv;
 
                     cell.setOnClickListener(new View.OnClickListener() {
