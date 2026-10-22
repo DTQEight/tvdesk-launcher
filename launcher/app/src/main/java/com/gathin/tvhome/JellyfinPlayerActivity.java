@@ -420,13 +420,36 @@ public class JellyfinPlayerActivity extends FragmentActivity
             names.addAll(subLabels);
             if (subLabels.isEmpty()) names.add("没有可用字幕");
         }
+        final int trackCount = names.size();
+        // 末尾两项：播放样式里的字幕大小 / 颜色
+        names.add("字幕大小：" + new String[]{"小", "中", "大"}[TVDeskPrefs.subSize(this)]);
+        names.add("字幕颜色：" + (TVDeskPrefs.subColor(this) == 0 ? "白色" : "黄色"));
+
         showMenu("字幕", names, new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
+                if (pos == trackCount) {
+                    int next = (TVDeskPrefs.subSize(JellyfinPlayerActivity.this) + 1) % 3;
+                    TVDeskPrefs.get(JellyfinPlayerActivity.this).edit()
+                            .putInt(TVDeskPrefs.KEY_SUB_SIZE, next).apply();
+                    applySubStyle();
+                    hideMenu();
+                    handler.postDelayed(new Runnable() { @Override public void run() { showSubtitleMenu(); } }, 120);
+                    return;
+                }
+                if (pos == trackCount + 1) {
+                    int next = TVDeskPrefs.subColor(JellyfinPlayerActivity.this) == 0 ? 1 : 0;
+                    TVDeskPrefs.get(JellyfinPlayerActivity.this).edit()
+                            .putInt(TVDeskPrefs.KEY_SUB_COLOR, next).apply();
+                    applySubStyle();
+                    hideMenu();
+                    handler.postDelayed(new Runnable() { @Override public void run() { showSubtitleMenu(); } }, 120);
+                    return;
+                }
                 if (pos == 0) {
                     if (curSub >= 0) { try { player.deselectTrack(curSub); } catch (Throwable ignored) { } }
                     curSub = -1; curJfSub = -1; cues = null;
                     if (subView != null) subView.setVisibility(View.GONE);
-                } else if (!jfSubs.isEmpty()) {
+                } else if (!jfSubs.isEmpty() && pos - 1 < jfSubs.size()) {
                     loadJfSubtitle(jfSubs.get(pos - 1).index);
                 } else if (pos - 1 < subIdx.size()) {
                     int i = subIdx.get(pos - 1); player.selectTrack(i); curSub = i;
@@ -435,6 +458,7 @@ public class JellyfinPlayerActivity extends FragmentActivity
             }
         });
     }
+
 
     /** 后台拉 Jellyfin 的字幕列表。 */
     private void loadJfSubtitles() {

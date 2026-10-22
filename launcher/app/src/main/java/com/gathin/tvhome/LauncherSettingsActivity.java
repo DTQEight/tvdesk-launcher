@@ -149,9 +149,7 @@ public final class LauncherSettingsActivity extends Activity {
                 "背景随机轮播：" + (p.getBoolean(TVDeskPrefs.KEY_BACKDROP, true) ? "开" : "关"),
                 "轮播间隔：" + (p.getInt(TVDeskPrefs.KEY_INTERVAL, 30000) / 1000) + " 秒",
                 "天气定位：" + (p.getBoolean(TVDeskPrefs.KEY_WEATHER_HOME, false) ? "固定佛山顺德" : "跟随 IP"),
-                "直播预览：" + (p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true) ? "开" : "关"),
-                "字幕大小：" + new String[]{"小", "中", "大"}[p.getInt(TVDeskPrefs.KEY_SUB_SIZE, 1)],
-                "字幕颜色：" + (p.getInt(TVDeskPrefs.KEY_SUB_COLOR, 0) == 0 ? "白色" : "黄色")
+                "直播预览：" + (p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true) ? "开" : "关")
         };
         new AlertDialog.Builder(this)
                 .setTitle("TVDesk 设置")
@@ -174,15 +172,6 @@ public final class LauncherSettingsActivity extends Activity {
                         case 3:
                             p.edit().putBoolean(TVDeskPrefs.KEY_PREVIEW,
                                     !p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true)).apply();
-                            break;
-                        case 4: {
-                            int v = (p.getInt(TVDeskPrefs.KEY_SUB_SIZE, 1) + 1) % 3;
-                            p.edit().putInt(TVDeskPrefs.KEY_SUB_SIZE, v).apply();
-                            break;
-                        }
-                        case 5:
-                            p.edit().putInt(TVDeskPrefs.KEY_SUB_COLOR,
-                                    p.getInt(TVDeskPrefs.KEY_SUB_COLOR, 0) == 0 ? 1 : 0).apply();
                             break;
                     }
                     Toast.makeText(this, "已保存，回桌面生效", Toast.LENGTH_SHORT).show();
