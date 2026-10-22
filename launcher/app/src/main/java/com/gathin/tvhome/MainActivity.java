@@ -600,6 +600,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         armHomeProps();
         installShelf();
         installWeather();
+        askLocationPermission();
         installTopTabs();
         wireFocus();
 
@@ -959,10 +960,23 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
 
+    /** 读 Wi-Fi 名需要定位权限（Android 8.1+）。被拒也不影响，退回 IP 定位。 */
+    private void askLocationPermission() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 23) return;
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+            requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, 7001);
+        } catch (Throwable t) {
+            android.util.Log.w("CYT-WEATHER", "askPermission failed " + t);
+        }
+    }
+
+
     private void loadWeather() {
         new Thread(new Runnable() {
             @Override public void run() {
-                final String w = Weather.fetch();
+                final String w = Weather.fetch(getApplicationContext());
                 runOnUiThread(new Runnable() {
                     @Override public void run() {
                         if (weatherView == null) return;
