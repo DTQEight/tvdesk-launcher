@@ -1084,10 +1084,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             LinearLayout leftTabs = new LinearLayout(this);
             leftTabs.setOrientation(LinearLayout.HORIZONTAL);
             tabsLeft[0] = addTab(leftTabs, "HDMI 1", "", new Runnable() {
-                @Override public void run() { SourceSwitcher.gotoSource(MainActivity.this, "HDMI1", 0); }
+                @Override public void run() { SourceSwitcher.gotoSource(MainActivity.this, "HDMI1"); }
             });
             tabsLeft[1] = addTab(leftTabs, "HDMI 2", "", new Runnable() {
-                @Override public void run() { SourceSwitcher.gotoSource(MainActivity.this, "HDMI2", 0); }
+                @Override public void run() { SourceSwitcher.gotoSource(MainActivity.this, "HDMI2"); }
             });
             FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(dp(560), dp(50));
             llp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
@@ -3157,13 +3157,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** 本机信号源（创维走厂商 provider，标准 TvInputManager 拿不到）。 */
     private void addLocalSources(LinearLayout rows, PopupWindow popup) {
         addInputRow(rows, popup, R.drawable.ic_input, "HDMI 1", -1,
-                () -> SourceSwitcher.gotoSource(this, "HDMI1", 0));
+                () -> SourceSwitcher.gotoSource(this, "HDMI1"));
         addInputRow(rows, popup, R.drawable.ic_input, "HDMI 2", -1,
-                () -> SourceSwitcher.gotoSource(this, "HDMI2", 1));
+                () -> SourceSwitcher.gotoSource(this, "HDMI2"));
         addInputRow(rows, popup, R.drawable.ic_av, "视频", -1,
-                () -> SourceSwitcher.gotoSource(this, "AV", 0));
+                () -> SourceSwitcher.gotoSource(this, "AV1"));
         addInputRow(rows, popup, R.drawable.ic_livetv, "电视", -1,
-                () -> SourceSwitcher.gotoSource(this, "ATV", 0));
+                () -> SourceSwitcher.gotoSource(this, "ATV"));
         addSeparator(rows);
     }
 
