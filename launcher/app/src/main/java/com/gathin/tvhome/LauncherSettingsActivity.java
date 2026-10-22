@@ -125,7 +125,7 @@ public final class LauncherSettingsActivity extends Activity {
             ScrollView sv = (ScrollView) content.getChildAt(0);
             LinearLayout root = (LinearLayout) sv.getChildAt(0);
             TextView row = new TextView(this);
-            row.setText("TVDesk 设置（背景 / 天气 / 预览）");
+            row.setText("▶ TVDesk 设置（背景 / 天气 / 字幕 / 预览）");
             row.setTextColor(0xFFE6EEF5);
             row.setTextSize(18);
             row.setPadding(0, 28, 0, 28);
@@ -134,8 +134,10 @@ public final class LauncherSettingsActivity extends Activity {
             row.setOnClickListener(v -> showTvDeskDialog());
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = 18;
-            root.addView(row, lp);
+            lp.topMargin = 10;
+            // 放到标题下面第一行，免得要滚到底才找得到
+            root.addView(row, Math.min(1, root.getChildCount()), lp);
+            row.requestFocus();
         } catch (Throwable t) {
             android.util.Log.w("CYT-PREFS", "addTvDeskRow failed " + t);
         }
