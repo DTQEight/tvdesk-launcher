@@ -47,6 +47,19 @@ public final class SourceSwitcher {
         }
     }
 
+    /** 释放当前占用的信号源（否则回到桌面后 HDMI 声音还在响）。 */
+    public static boolean releaseSource(Context ctx) {
+        try {
+            Bundle ret = ctx.getContentResolver().call(URI, "METHOD_FORCE_RELEASE_SOURCE", null, (Bundle) null);
+            boolean ok = ret != null && ret.getBoolean("ret", false);
+            Log.i(TAG, "releaseSource -> " + ok);
+            return ok;
+        } catch (Throwable t) {
+            Log.w(TAG, "releaseSource failed " + t);
+            return false;
+        }
+    }
+
     public static boolean backToTv(Context ctx) {
         try {
             Bundle ret = ctx.getContentResolver().call(URI, "METHOD_BACK_TO_TV", null, (Bundle) null);

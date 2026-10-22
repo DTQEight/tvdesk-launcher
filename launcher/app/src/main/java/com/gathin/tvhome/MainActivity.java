@@ -681,6 +681,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
+        // 回到桌面：释放电视信号源，否则 HDMI 的声音会继续在后台响
+        try { SourceSwitcher.releaseSource(this); } catch (Throwable ignored) { }
         if (!shelfLoaded) loadShelf();
         armHomeProps();
         if (livePreview != null && liveChannels != null && liveIndex >= 0 && liveSurface != null
