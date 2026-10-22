@@ -1293,12 +1293,24 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                             LinearLayout.LayoutParams.MATCH_PARENT, dp(38)));
                     labels[i] = tv;
 
+                    // 焦点描边（田字格）
+                    View ring = new View(this);
+                    android.graphics.drawable.GradientDrawable rg = new android.graphics.drawable.GradientDrawable();
+                    rg.setColor(0x00000000);
+                    rg.setCornerRadius(dp(10));
+                    rg.setStroke(dp(5), 0xFF00A4DC);
+                    ring.setBackground(rg);
+                    ring.setVisibility(View.GONE);
+                    cell.addView(ring, new FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
                     cell.setOnClickListener(new View.OnClickListener() {
                         @Override public void onClick(View v) { playItem(i); }
                     });
                     cell.setOnFocusChangeListener(new View.OnFocusChangeListener() {
                         @Override public void onFocusChange(View v, boolean has) {
-                            v.animate().scaleX(has ? 1.03f : 1f).scaleY(has ? 1.03f : 1f).setDuration(150).start();
+                            ring.setVisibility(has ? View.VISIBLE : View.GONE);
+                            v.animate().scaleX(has ? 1.05f : 1f).scaleY(has ? 1.05f : 1f).setDuration(150).start();
                         }
                     });
 
@@ -1375,6 +1387,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** 封面轮播：每 7 秒整体左移一格。 */
     private final Runnable rotateTick = new Runnable() {
         @Override public void run() {
+            if (shelfCells != null) { for (View c : shelfCells) { if (c != null && c.hasFocus()) { handler.postDelayed(this, 3000); return; } } }
             if (shelfAll == null || shelfAll.size() <= 4) return;
             shelfOffset = (shelfOffset + 1) % shelfAll.size();
             renderShelf();
@@ -1458,6 +1471,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             clp.setMargins(dp(10), 0, 0, dp(10));
             box.addView(cap, clp);
 
+            // 焦点描边（叠在视频上，聚焦时才显示）
+            final View liveRing = new View(this);
+            android.graphics.drawable.GradientDrawable lrg = new android.graphics.drawable.GradientDrawable();
+            lrg.setColor(0x00000000);
+            lrg.setCornerRadius(dp(8));
+            lrg.setStroke(dp(5), 0xFF00A4DC);
+            liveRing.setBackground(lrg);
+            liveRing.setVisibility(View.GONE);
+            box.addView(liveRing, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
             box.setFocusable(true);
             box.setFocusableInTouchMode(true);
             box.setOnClickListener(new View.OnClickListener() {
@@ -1475,7 +1499,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             });
             box.setOnFocusChangeListener(new View.OnFocusChangeListener() {
                 @Override public void onFocusChange(View v, boolean has) {
-                    v.animate().scaleX(has ? 1.02f : 1f).scaleY(has ? 1.02f : 1f).setDuration(150).start();
+                    liveRing.setVisibility(has ? View.VISIBLE : View.GONE);
+                    v.animate().scaleX(has ? 1.03f : 1f).scaleY(has ? 1.03f : 1f).setDuration(150).start();
                 }
             });
 
