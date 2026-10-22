@@ -1148,22 +1148,31 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
                     posters[i] = img;
 
+                    // 底部渐变遮罩（比纯黑条柔和）
                     View scrim = new View(this);
-                    scrim.setBackgroundColor(0x99000000);
+                    scrim.setBackground(new android.graphics.drawable.GradientDrawable(
+                            android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
+                            new int[]{0xF2000000, 0x00000000}));
                     FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT, dp(46));
+                            FrameLayout.LayoutParams.MATCH_PARENT, dp(96));
                     slp.gravity = android.view.Gravity.BOTTOM;
                     cell.addView(scrim, slp);
 
                     TextView tv = new TextView(this);
                     tv.setTextColor(0xFFFFFFFF);
-                    tv.setTextSize(15);
+                    tv.setTextSize(19);
                     tv.setSingleLine(true);
                     tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                    tv.setPadding(dp(12), 0, dp(12), 0);
-                    tv.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                    tv.setPadding(dp(18), 0, dp(18), dp(16));
+                    tv.setGravity(android.view.Gravity.BOTTOM | android.view.Gravity.START);
+                    tv.setLetterSpacing(0.04f);
+                    tv.setShadowLayer(dp(6), 0, dp(1), 0xE6000000);
+                    try {
+                        tv.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(
+                                this, R.font.outfit_medium));
+                    } catch (Throwable ignored) { }
                     FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT, dp(46));
+                            FrameLayout.LayoutParams.MATCH_PARENT, dp(72));
                     tlp.gravity = android.view.Gravity.BOTTOM;
                     cell.addView(tv, tlp);
                     labels[i] = tv;
