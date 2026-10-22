@@ -68,6 +68,7 @@ public class JellyfinPlayerActivity extends FragmentActivity
 
     private final Handler handler = new Handler();
     private TextView seekTip;
+    private TextView subView;   // 自绘字幕（字号/颜色可调）
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -94,6 +95,19 @@ public class JellyfinPlayerActivity extends FragmentActivity
         FrameLayout.LayoutParams stlp = new FrameLayout.LayoutParams(-2, -2);
         stlp.gravity = Gravity.CENTER;
         root.addView(seekTip, stlp);
+
+        // 字幕层：底部居中，字号/颜色走设置
+        subView = new TextView(this);
+        subView.setTextColor(0xFFFFFFFF);
+        subView.setGravity(Gravity.CENTER);
+        subView.setPadding(dp(18), dp(6), dp(18), dp(6));
+        subView.setVisibility(View.GONE);
+        subView.setShadowLayer(dp(4), 0, dp(2), 0xE6000000);
+        applySubStyle();
+        FrameLayout.LayoutParams subLp = new FrameLayout.LayoutParams(-2, -2);
+        subLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        subLp.bottomMargin = dp(120);
+        root.addView(subView, subLp);
 
         buildSidePanel(root);
         setContentView(root);
@@ -180,6 +194,7 @@ public class JellyfinPlayerActivity extends FragmentActivity
                     glue.play();
                     if (cb != null) cb.onPlayStateChanged(adapter);
                     scanTracks();
+                    attachSubtitleListener();
                     final String id = itemId;
                     final long pos = startMs;
                     new Thread(new Runnable() { @Override public void run() { JellyfinClient.reportStart(id, pos); } }).start();
@@ -191,6 +206,43 @@ public class JellyfinPlayerActivity extends FragmentActivity
         handler.removeCallbacks(progressTick);
         handler.postDelayed(progressTick, 5000);
     }
+
+    /** 按设置调整字幕字号/颜色。 */
+    private void applySubStyle() {
+        int size = TVDeskPrefs.subSize(this);
+        int sp = size == 0 ? 22 : size == 2 ? 40 : 30;
+        int color = TVDeskPrefs.subColor(this) == 0 ? 0xFFFFFFFF : 0xFFFFEB3B;
+        if (subView != null) {
+            subView.setTextSize(sp);
+            subView.setTextColor(color);
+        }
+    }
+
+    /** 拿 ijk 的字幕文本自己画，这样字号/颜色可控。 */
+    private void attachSubtitleListener() {
+        try {
+            if (player == null) return;
+            player.setOnTimedTextListener(new IMediaPlayer.OnTimedTextListener() {
+                @Override public void onTimedText(IMediaPlayer mp, tv.danmaku.ijk.media.player.IjkTimedText text) {
+                    final String t = text == null ? null : text.getText();
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            if (subView == null) return;
+                            if (t == null || t.trim().isEmpty()) {
+                                subView.setVisibility(View.GONE);
+                            } else {
+                                subView.setText(t);
+                                subView.setVisibility(View.VISIBLE);
+                            }
+                        }
+                    });
+                }
+            });
+        } catch (Throwable t) {
+            Log.w(TAG, "subtitle listener failed " + t);
+        }
+    }
+
 
     private void scanTracks() {
         audioIdx.clear(); audioLabels.clear(); subIdx.clear(); subLabels.clear();

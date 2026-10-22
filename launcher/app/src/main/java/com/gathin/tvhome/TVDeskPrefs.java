@@ -12,6 +12,8 @@ public final class TVDeskPrefs {
     public static final String KEY_INTERVAL = "backdrop_interval_ms";
     public static final String KEY_WEATHER_HOME = "weather_home";     // true = 固定佛山顺德
     public static final String KEY_PREVIEW = "preview_enabled";
+    public static final String KEY_SUB_SIZE = "sub_size";      // 0 小 / 1 中 / 2 大
+    public static final String KEY_SUB_COLOR = "sub_color";    // 0 白 / 1 黄
 
     private TVDeskPrefs() { }
 
@@ -23,4 +25,6 @@ public final class TVDeskPrefs {
     public static int interval(Context ctx) { return get(ctx).getInt(KEY_INTERVAL, 30000); }
     public static boolean weatherHome(Context ctx) { return get(ctx).getBoolean(KEY_WEATHER_HOME, false); }
     public static boolean preview(Context ctx) { return get(ctx).getBoolean(KEY_PREVIEW, true); }
+    public static int subSize(Context ctx) { return get(ctx).getInt(KEY_SUB_SIZE, 1); }
+    public static int subColor(Context ctx) { return get(ctx).getInt(KEY_SUB_COLOR, 0); }
 }
