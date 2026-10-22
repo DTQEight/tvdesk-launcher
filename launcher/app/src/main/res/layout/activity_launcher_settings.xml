@@ -61,9 +61,11 @@
             <TextView android:id="@+id/rows3" style="@style/SettingsColumnChoice" android:text="3" />
         </LinearLayout>
 
+        <!-- 壁纸由 Jellyfin 剧照背景接管，这里隐藏（WallpaperPlayer 的图会盖住剧照） -->
         <TextView
             android:id="@+id/wallpaperChoice"
             style="@style/SettingsRow"
+            android:visibility="gone"
             android:layout_marginTop="28dp" />
 
         <TextView

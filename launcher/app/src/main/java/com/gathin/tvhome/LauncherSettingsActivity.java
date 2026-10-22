@@ -71,7 +71,8 @@ public final class LauncherSettingsActivity extends Activity {
             reverseRow(rowChoices);
         }
         wallpaperChoice = findViewById(R.id.wallpaperChoice);
-        wallpaperChoice.setOnClickListener(v -> showWallpaperPicker());
+        // 壁纸功能容易把 Jellyfin 剧照背景盖住，入口隐藏
+        wallpaperChoice.setVisibility(android.view.View.GONE);
         animationsChoice = findViewById(R.id.animationsChoice);
         animationsChoice.setOnClickListener(v -> {
             animations = !animations;
