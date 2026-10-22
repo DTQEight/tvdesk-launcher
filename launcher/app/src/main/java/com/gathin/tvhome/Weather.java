@@ -14,6 +14,11 @@ public final class Weather {
 
     private static final String TAG = "CYT-WEATHER";
 
+    /** 家里位置：佛山顺德（IP 定位常被运营商出口带到广州，所以直接写死）。 */
+    private static final String CITY = "佛山顺德";
+    private static final double LAT = 22.8058;
+    private static final double LON = 113.2930;
+
     private Weather() { }
 
     private static String get(String url) throws Exception {
@@ -34,13 +39,17 @@ public final class Weather {
     /** 失败返回 null。 */
     public static String fetch() {
         try {
-            String ip = get("http://ip-api.com/json/?lang=zh-CN&fields=status,city,lat,lon");
-            if (ip == null) return null;
-            JSONObject io = new JSONObject(ip);
-            if (!"success".equals(io.optString("status"))) return null;
-            String city = io.optString("city", "");
-            double lat = io.optDouble("lat", 0);
-            double lon = io.optDouble("lon", 0);
+            String city = CITY;
+            double lat = LAT, lon = LON;
+            if (lat == 0 && lon == 0) {
+                String ip = get("http://ip-api.com/json/?lang=zh-CN&fields=status,city,lat,lon");
+                if (ip == null) return null;
+                JSONObject io = new JSONObject(ip);
+                if (!"success".equals(io.optString("status"))) return null;
+                city = io.optString("city", "");
+                lat = io.optDouble("lat", 0);
+                lon = io.optDouble("lon", 0);
+            }
 
             String m = get("https://api.open-meteo.com/v1/forecast?latitude=" + lat
                     + "&longitude=" + lon + "&current=temperature_2m,weather_code&timezone=auto");
