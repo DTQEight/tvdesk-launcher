@@ -207,7 +207,10 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
         LiveSource.Ch ch = channels.get(index);
         autoPrefix = null;   // 先关掉自动换源（会选到 4K 源）
         autoStartMs = System.currentTimeMillis();
-        showOsd((index + 1) + "  " + ch.name + (ch.group.isEmpty() ? "" : "  ·  " + ch.group));
+        String epg = null;
+        try { epg = Epg.now(getApplicationContext(), ch.name); } catch (Throwable ignored) { }
+        showOsd((index + 1) + "  " + ch.name + (ch.group.isEmpty() ? "" : "  ·  " + ch.group)
+                + (epg == null ? "" : "`n" + epg));
         if (player != null) {
             try { player.stop(); } catch (Throwable ignored) { }
             try { player.release(); } catch (Throwable ignored) { }

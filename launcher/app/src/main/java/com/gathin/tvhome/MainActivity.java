@@ -610,6 +610,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         if (festive) applyFestiveSkin((TextView) btnInputs, (TextView) btnSettings);
         installBackdrop();
+        try { Epg.refreshIfStale(getApplicationContext()); } catch (Throwable ignored) { }
         installLive();
         armHomeProps();
         installShelf();
