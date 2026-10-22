@@ -28,7 +28,68 @@ public final class LiveSource {
 
     private LiveSource() { }
 
-    public static List<Ch> load() {
+    private static final String CACHE = "live_channels.tsv";
+    private static final long CACHE_FRESH_MS = 6 * 60 * 60 * 1000L;
+
+    /** 先用本地缓存（秒开），缓存过期或不存在再拉网络；过期时后台静默刷新。 */
+    public static List<Ch> load(android.content.Context ctx) {
+        if (ctx != null) {
+            try {
+                java.io.File f = new java.io.File(ctx.getCacheDir(), CACHE);
+                if (f.exists()) {
+                    List<Ch> cached = parse(new String(java.nio.file.Files.readAllBytes(f.toPath()), "UTF-8"));
+                    if (!cached.isEmpty()) {
+                        Log.i(TAG, "channels(cache)=" + cached.size());
+                        if (System.currentTimeMillis() - f.lastModified() > CACHE_FRESH_MS) {
+                            final android.content.Context c2 = ctx.getApplicationContext();
+                            new Thread(new Runnable() {
+                                @Override public void run() {
+                                    List<Ch> fresh = fetch();
+                                    if (!fresh.isEmpty()) saveCache(c2, fresh);
+                                }
+                            }, "cyt-m3u-refresh").start();
+                        }
+                        return cached;
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "cache read failed " + t);
+            }
+        }
+        List<Ch> list = fetch();
+        if (!list.isEmpty() && ctx != null) saveCache(ctx.getApplicationContext(), list);
+        return list;
+    }
+
+    private static void saveCache(android.content.Context ctx, List<Ch> list) {
+        try {
+            StringBuilder sb = new StringBuilder(list.size() * 96);
+            for (Ch c : list) {
+                sb.append(c.name).append('\t').append(c.group).append('\t').append(c.url).append('\n');
+            }
+            java.io.File f = new java.io.File(ctx.getCacheDir(), CACHE);
+            java.io.FileOutputStream fo = new java.io.FileOutputStream(f);
+            fo.write(sb.toString().getBytes("UTF-8"));
+            fo.close();
+            Log.i(TAG, "cache saved " + list.size());
+        } catch (Throwable t) {
+            Log.w(TAG, "cache save failed " + t);
+        }
+    }
+
+    private static List<Ch> parse(String text) {
+        List<Ch> out = new ArrayList<>();
+        if (text == null) return out;
+        for (String line : text.split("\n")) {
+            if (line.isEmpty()) continue;
+            String[] p = line.split("\t", 3);
+            if (p.length == 3) out.add(new Ch(p[0], p[2], p[1]));
+        }
+        return out;
+    }
+
+    /** 拉网络并解析 M3U。 */
+    public static List<Ch> fetch() {
         List<Ch> out = new ArrayList<>();
         HttpURLConnection c = null;
         BufferedReader r = null;

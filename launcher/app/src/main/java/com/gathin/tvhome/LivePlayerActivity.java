@@ -84,7 +84,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
         wantName = getIntent().getStringExtra("name");
         new Thread(new Runnable() {
             @Override public void run() {
-                final List<LiveSource.Ch> list = LiveSource.load();
+                final List<LiveSource.Ch> list = LiveSource.load(getApplicationContext());
                 final LinkedHashMap<String, List<LiveSource.Ch>> map = LiveSource.categories(list);
                 runOnUiThread(new Runnable() {
                     @Override public void run() {

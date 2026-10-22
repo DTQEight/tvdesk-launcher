@@ -109,8 +109,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private String liveTvPkg;
     /** Idle time on Home before ClockActivity; 0 is off (config.xml, home_idle_clock_minutes). */
     private long idleClockMs;
-    private final Runnable showIdleClock = () -> startActivity(new Intent(this, ClockActivity.class));
+    private final Runnable showIdleClock = () -> {
+        // 进屏保前把直播预览停掉，省解码器/电
+        stopPreviewForIdle();
+        startActivity(new Intent(this, ClockActivity.class));
+    };
     private String liveTvAction;
+
+    /** 屏保/空闲时停掉预览（方法体内可以引用后面声明的字段）。 */
+    private void stopPreviewForIdle() {
+        if (livePreview != null) livePreview.stop();
+    }
     private String inputAction;
     private String sourcePanelService;
     private String sourcePanelAction;
@@ -1020,7 +1029,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     @Override public void run() {
                         target.setImageBitmap(out);
                         target.animate().alpha(1f).setDuration(900).start();
-                        other.animate().alpha(0f).setDuration(900).start();
+                        // 旧图淡出后立刻回收，避免每 30 秒泄漏一张 1920x1080 位图
+                        other.animate().alpha(0f).setDuration(900)
+                                .withEndAction(new Runnable() {
+                                    @Override public void run() {
+                                        android.graphics.drawable.Drawable d = other.getDrawable();
+                                        other.setImageDrawable(null);
+                                        if (d instanceof android.graphics.drawable.BitmapDrawable) {
+                                            android.graphics.Bitmap b =
+                                                    ((android.graphics.drawable.BitmapDrawable) d).getBitmap();
+                                            if (b != null && !b.isRecycled()) b.recycle();
+                                        }
+                                    }
+                                }).start();
                     }
                 });
             }
@@ -1531,7 +1552,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         new Thread(new Runnable() {
             @Override public void run() {
-                final java.util.List<LiveSource.Ch> list = LiveSource.load();
+                final java.util.List<LiveSource.Ch> list = LiveSource.load(getApplicationContext());
                 runOnUiThread(new Runnable() {
                     @Override public void run() {
                         if (list.isEmpty()) {
