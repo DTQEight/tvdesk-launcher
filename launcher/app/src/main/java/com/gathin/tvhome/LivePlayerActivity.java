@@ -40,6 +40,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
     private String curCat = "全部";
     private int index = -1;
     private int jump;
+    private int retry;
 
     private LinearLayout panel;
     private ListView catList;
@@ -213,16 +214,31 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 1500000L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 512L * 1024);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1L);
+            // 断流自动重连（免费源经常抽风）
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_streamed", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_delay_max", 2L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "timeout", 10000000L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "rw_timeout", 10000000L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 1L);
             p.setDisplay(surfaceView.getHolder());
             p.setDataSource(ch.url);
             p.setOnPreparedListener(new IMediaPlayer.OnPreparedListener() {
-                @Override public void onPrepared(IMediaPlayer mp) { mp.start(); }
+                @Override public void onPrepared(IMediaPlayer mp) { retry = 0; mp.start(); handler.removeCallbacks(statTick); handler.postDelayed(statTick, 2000); }
             });
             p.setOnErrorListener(new IMediaPlayer.OnErrorListener() {
                 @Override public boolean onError(IMediaPlayer mp, int what, int extra) {
                     Log.w(TAG, "error " + what + "/" + extra);
-                    showOsd("播放失败（" + what + "）");
+                    // 源站断流：自动重试，最多 4 次
+                    if (retry < 4) {
+                        retry++;
+                        showOsd("重新连接中… (" + retry + "/4)");
+                        handler.postDelayed(new Runnable() {
+                            @Override public void run() { startPlay(); }
+                        }, 1200L);
+                    } else {
+                        showOsd("播放失败（" + what + "）");
+                    }
                     return true;
                 }
             });
@@ -240,6 +256,22 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
 
     private final Runnable hideOsd = new Runnable() {
         @Override public void run() { osd.setVisibility(View.GONE); }
+    };
+
+    /** 诊断：每 2 秒打印解码/缓冲状态（排查卡顿用）。 */
+    private final Runnable statTick = new Runnable() {
+        @Override public void run() {
+            if (player == null) return;
+            try {
+                Log.i("CYT-STAT", "res=" + player.getVideoWidth() + "x" + player.getVideoHeight()
+                        + " dec=" + player.getVideoDecoder()
+                        + " decFps=" + player.getVideoDecodeFramesPerSecond()
+                        + " outFps=" + player.getVideoOutputFramesPerSecond()
+                        + " vCache=" + player.getVideoCachedDuration() + "ms"
+                        + " aCache=" + player.getAudioCachedDuration() + "ms");
+            } catch (Throwable ignored) { }
+            handler.postDelayed(this, 2000);
+        }
     };
 
     private final Runnable commitJump = new Runnable() {
@@ -278,6 +310,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
     @Override protected void onStop() {
+        handler.removeCallbacks(statTick);
         super.onStop();
         // 离开直播页就释放解码器，避免和桌面预览抢硬件
         if (player != null) {

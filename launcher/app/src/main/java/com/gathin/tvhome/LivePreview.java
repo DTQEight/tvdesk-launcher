@@ -27,6 +27,12 @@ public final class LivePreview {
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 1500000L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 512L * 1024);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1L);
+            // 断流自动重连（免费源经常抽风）
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_streamed", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_delay_max", 2L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "timeout", 10000000L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "rw_timeout", 10000000L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 1L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "loop", 1L);
             p.setVolume(0f, 0f);
