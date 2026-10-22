@@ -929,23 +929,35 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** 预览窗右侧的四格海报墙（Jellyfin 国产剧）。 */
     /** 左：输入源两个独立 tab（HDMI1 / HDMI2）；右：最近观看 + 一个待定 tab。 */
     /** 左上角天气（时钟下方）：IP 定位 + Open-Meteo，30 分钟刷新一次。 */
+    /** 左上角天气：直接插到日期上方（同一个 LinearLayout），天然对齐日期。 */
     private void installWeather() {
         try {
             weatherView = new TextView(this);
             weatherView.setTextColor(0xFF9FB0C0);
             weatherView.setTextSize(15);
             weatherView.setText("天气加载中…");
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
-            lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
-            lp.leftMargin = dp(172);
-            lp.topMargin = dp(48);
-            root.addView(weatherView, lp);
+            weatherView.setPadding(0, 0, 0, dp(4));
+
+            View dateView = findViewById(R.id.date);
+            if (dateView != null && dateView.getParent() instanceof LinearLayout) {
+                LinearLayout parent = (LinearLayout) dateView.getParent();
+                int idx = parent.indexOfChild(dateView);
+                parent.addView(weatherView, idx, new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            } else {
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+                lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
+                lp.leftMargin = dp(172);
+                lp.topMargin = dp(48);
+                root.addView(weatherView, lp);
+            }
             loadWeather();
         } catch (Throwable t) {
             android.util.Log.e("CYT-WEATHER", "installWeather failed " + t);
         }
     }
+
 
     private void loadWeather() {
         new Thread(new Runnable() {
