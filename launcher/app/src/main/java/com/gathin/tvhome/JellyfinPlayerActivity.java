@@ -65,6 +65,12 @@ public class JellyfinPlayerActivity extends FragmentActivity
     private final List<Integer> subIdx = new ArrayList<>();
     private final List<String> subLabels = new ArrayList<>();
     private int curSub = -1, curEp = -1;
+    /** Jellyfin 侧字幕流 + 解析出来的 VTT 字幕。 */
+    private final List<JellyfinClient.Sub> jfSubs = new ArrayList<>();
+    private List<Vtt.Cue> cues;
+    private int curJfSub = -1;
+    private int subLog;
+
 
     private final Handler handler = new Handler();
     private TextView seekTip;
@@ -212,14 +218,24 @@ public class JellyfinPlayerActivity extends FragmentActivity
     /** 调试用：--ei sub N 直接选中第 N 条字幕，--ei seek ms 跳到指定位置。 */
     private void applyDebugTrack() {
         try {
-            int sub = getIntent().getIntExtra("sub", -1);
-            if (sub >= 0 && sub < subIdx.size()) {
-                player.selectTrack(subIdx.get(sub));
-                curSub = subIdx.get(sub);
-                Log.i(TAG, "debug subtitle track " + subIdx.get(sub));
-            }
-            int seek = getIntent().getIntExtra("seek", -1);
+            final int sub = getIntent().getIntExtra("sub", -1);
+            final int seek = getIntent().getIntExtra("seek", -1);
             if (seek >= 0) player.seekTo(seek);
+            if (sub >= 0) {
+                handler.postDelayed(new Runnable() {
+                    @Override public void run() {
+                        try {
+                            if (sub < jfSubs.size()) {
+                                loadJfSubtitle(jfSubs.get(sub).index);
+                                Log.i(TAG, "debug: picked jf sub " + sub);
+                            } else if (sub < subIdx.size()) {
+                                player.selectTrack(subIdx.get(sub));
+                                curSub = subIdx.get(sub);
+                            }
+                        } catch (Throwable ignored) { }
+                    }
+                }, 1500L);
+            }
         } catch (Throwable t) {
             Log.w(TAG, "applyDebugTrack failed " + t);
         }
@@ -228,8 +244,14 @@ public class JellyfinPlayerActivity extends FragmentActivity
 
     private void applySubStyle() {
         int size = TVDeskPrefs.subSize(this);
+        int colorIdx = TVDeskPrefs.subColor(this);
+        int dbgS = getIntent().getIntExtra("subsize", -1);
+        int dbgC = getIntent().getIntExtra("subcolor", -1);
+        if (dbgS >= 0) { size = dbgS; TVDeskPrefs.get(this).edit().putInt(TVDeskPrefs.KEY_SUB_SIZE, dbgS).apply(); }
+        if (dbgC >= 0) { colorIdx = dbgC; TVDeskPrefs.get(this).edit().putInt(TVDeskPrefs.KEY_SUB_COLOR, dbgC).apply(); }
         int sp = size == 0 ? 22 : size == 2 ? 40 : 30;
-        int color = TVDeskPrefs.subColor(this) == 0 ? 0xFFFFFFFF : 0xFFFFEB3B;
+        int color = colorIdx == 0 ? 0xFFFFFFFF : 0xFFFFEB3B;
+        Log.i(TAG, "sub style sp=" + sp + " color=" + Integer.toHexString(color) + " (size=" + size + ", dbg=" + dbgS + "/" + dbgC + ")");
         if (subView != null) {
             subView.setTextSize(sp);
             subView.setTextColor(color);
@@ -282,6 +304,7 @@ public class JellyfinPlayerActivity extends FragmentActivity
                     subLabels.add("字幕 " + si + (lang.isEmpty() ? "" : " · " + lang));
                 }
             }
+        loadJfSubtitles();
         } catch (Throwable t) { Log.e(TAG, "scanTracks " + t); }
     }
 
@@ -392,16 +415,90 @@ public class JellyfinPlayerActivity extends FragmentActivity
     private void showSubtitleMenu() {
         List<String> names = new ArrayList<>();
         names.add("关闭字幕");
-        names.addAll(subLabels);
-        if (subLabels.isEmpty()) names.add("没有内嵌字幕");
+        for (JellyfinClient.Sub s : jfSubs) names.add(s.label());
+        if (jfSubs.isEmpty()) {
+            names.addAll(subLabels);
+            if (subLabels.isEmpty()) names.add("没有可用字幕");
+        }
         showMenu("字幕", names, new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
-                if (pos == 0) { if (curSub >= 0) player.deselectTrack(curSub); curSub = -1; }
-                else if (pos - 1 < subIdx.size()) { int i = subIdx.get(pos - 1); player.selectTrack(i); curSub = i; }
+                if (pos == 0) {
+                    if (curSub >= 0) { try { player.deselectTrack(curSub); } catch (Throwable ignored) { } }
+                    curSub = -1; curJfSub = -1; cues = null;
+                    if (subView != null) subView.setVisibility(View.GONE);
+                } else if (!jfSubs.isEmpty()) {
+                    loadJfSubtitle(jfSubs.get(pos - 1).index);
+                } else if (pos - 1 < subIdx.size()) {
+                    int i = subIdx.get(pos - 1); player.selectTrack(i); curSub = i;
+                }
                 hideMenu();
             }
         });
     }
+
+    /** 后台拉 Jellyfin 的字幕列表。 */
+    private void loadJfSubtitles() {
+        final String id = itemId;
+        if (id == null) return;
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final List<JellyfinClient.Sub> list = JellyfinClient.subtitleStreams(id);
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        jfSubs.clear();
+                        jfSubs.addAll(list);
+                        Log.i(TAG, "jellyfin subs=" + jfSubs.size());
+                    }
+                });
+            }
+        }, "cyt-sub-list").start();
+    }
+
+    /** 拉某条字幕的 VTT 并解析。 */
+    private void loadJfSubtitle(final int index) {
+        final String id = itemId;
+        if (id == null) return;
+        curJfSub = index;
+        if (subView != null) subView.setText("字幕加载中…");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final String vtt = JellyfinClient.subtitleVtt(id, index);
+                final List<Vtt.Cue> parsed = Vtt.parse(vtt);
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        cues = parsed;
+                        Log.i(TAG, "subtitle cues=" + parsed.size());
+                        if (subView != null) {
+                            subView.setText("");
+                            subView.setVisibility(View.GONE);
+                        }
+                    }
+                });
+            }
+        }, "cyt-sub-load").start();
+        handler.removeCallbacks(subTick);
+        handler.post(subTick);
+    }
+
+    /** 每 200ms 按播放位置刷新字幕。 */
+    private final Runnable subTick = new Runnable() {
+        @Override public void run() {
+            try {
+                if (player != null && cues != null && subView != null) {
+                    String t = Vtt.textAt(cues, player.getCurrentPosition());
+                    if ((subLog++ % 25) == 0) Log.i(TAG, "sub pos=" + player.getCurrentPosition() + " text=" + t + " cues=" + (cues == null ? -1 : cues.size()));
+                    if (t == null) {
+                        subView.setVisibility(View.GONE);
+                    } else {
+                        subView.setText(t);
+                        subView.setVisibility(View.VISIBLE);
+                    }
+                }
+            } catch (Throwable ignored) { }
+            handler.postDelayed(this, 200);
+        }
+    };
+
 
     private void showSpeedMenu() {
         List<String> names = new ArrayList<>();

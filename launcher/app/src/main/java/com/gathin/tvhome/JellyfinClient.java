@@ -100,7 +100,8 @@ public final class JellyfinClient {
         BufferedReader r = null;
         try {
             c = open(url);
-            if (c.getResponseCode() != 200) { Log.w(TAG, "http " + c.getResponseCode()); return readCache(cacheName); }
+            int code = c.getResponseCode();
+            if (code != 200) { Log.w(TAG, "http " + code + " for " + cacheName); return readCache(cacheName); }
             r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
             StringBuilder sb = new StringBuilder();
             String line;
@@ -443,5 +444,48 @@ public final class JellyfinClient {
             bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, fo);
             fo.close();
         } catch (Throwable ignored) { }
+    }
+    /** 一条字幕流（Jellyfin 侧）。 */
+    public static final class Sub {
+        public final int index;
+        public final String title;
+        public final String language;
+        Sub(int i, String t, String l) { index = i; title = t; language = l; }
+        public String label() {
+            String t = title == null || title.isEmpty() ? ("字幕 " + index) : title;
+            return t + (language == null || language.isEmpty() || "und".equals(language) ? "" : " · " + language);
+        }
+    }
+
+    /** 该视频的字幕流列表（来自 PlaybackInfo）。 */
+    public static java.util.List<Sub> subtitleStreams(String itemId) {
+        java.util.List<Sub> out = new java.util.ArrayList<>();
+        try {
+            JSONObject root = getJson(BASE + "/Items/" + itemId + "/PlaybackInfo?UserId=" + USER_ID);
+            if (root == null) return out;
+            JSONArray sources = root.optJSONArray("MediaSources");
+            if (sources == null || sources.length() == 0) return out;
+            JSONArray streams = sources.getJSONObject(0).optJSONArray("MediaStreams");
+            if (streams == null) return out;
+            for (int i = 0; i < streams.length(); i++) {
+                JSONObject s = streams.getJSONObject(i);
+                if (!"Subtitle".equals(s.optString("Type"))) continue;
+                out.add(new Sub(s.optInt("Index"), s.optString("DisplayTitle", ""),
+                        s.optString("Language", "")));
+            }
+            Log.i(TAG, "subtitle streams=" + out.size());
+        } catch (Throwable t) {
+            Log.w(TAG, "subtitleStreams failed " + t);
+        }
+        return out;
+    }
+
+    /** 字幕文件（VTT 文本）；失败返回 null。 */
+    public static String subtitleVtt(String itemId, int index) {
+        String raw = fetchJson(BASE + "/Videos/" + itemId + "/" + itemId
+                + "/Subtitles/" + index + "/Stream.vtt", "cache_sub_" + itemId + "_" + index + ".vtt");
+        Log.i(TAG, "vtt raw=" + (raw == null ? "null" : raw.length())
+                + " head=" + (raw == null ? "" : raw.substring(0, Math.min(160, raw.length())).replace("\n", "\\n")));
+        return raw;
     }
 }
