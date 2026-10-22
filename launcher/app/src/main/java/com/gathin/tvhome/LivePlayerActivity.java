@@ -41,6 +41,11 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
     private int index = -1;
     private int jump;
     private int retry;
+    /** 换台预加载：提前 prepare 相邻频道，切过去时直接 start。 */
+    private IjkMediaPlayer spare;
+    private int spareIndex = -1;
+    private boolean spareReady;
+
     /** 失效频道（url 集合），播放失败后记下来，列表里标 ✕。 */
     private final java.util.Set<String> deadChannels = new java.util.HashSet<>();
 
@@ -207,6 +212,23 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
     // ---------------- 播放 ----------------
 
     private void startPlay() {
+        // 命中预加载的相邻频道：省掉握手/探测时间
+        if (spare != null && spareReady && spareIndex == index) {
+            IjkMediaPlayer old = player;
+            player = spare;
+            spare = null; spareIndex = -1; spareReady = false;
+            if (old != null) { try { old.stop(); } catch (Throwable ignored) { } try { old.release(); } catch (Throwable ignored) { } }
+            try {
+                player.setDisplay(surfaceView.getHolder());
+                player.start();
+                retry = 0;
+                Log.i(TAG, "preload hit #" + index);
+                handler.removeCallbacks(statTick);
+                handler.postDelayed(statTick, 2000);
+                preloadNeighbor();
+                return;
+            } catch (Throwable ignored) { }
+        }
         if (channels.isEmpty() || index < 0 || index >= channels.size()) return;
         LiveSource.Ch ch = channels.get(index);
         autoPrefix = null;   // 先关掉自动换源（会选到 4K 源）
@@ -264,6 +286,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
             });
             p.prepareAsync();
             player = p;
+            handler.postDelayed(new Runnable() { @Override public void run() { preloadNeighbor(); } }, 3000L);
         } catch (Throwable t) { Log.e(TAG, "start failed " + t); }
     }
 
@@ -279,6 +302,56 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
             }
         }
         return -1;
+    }
+
+
+    /** 预加载下一个频道（不下发画面，只把连接/解封装/首帧准备好）。 */
+    private void preloadNeighbor() {
+        try {
+            if (channels == null || channels.size() < 2) return;
+            int next = index + 1;
+            if (next >= channels.size()) next = 0;
+            if (next == index) return;
+            if (spare != null && spareIndex == next) return;
+            releaseSpare();
+            final int target = next;
+            final IjkMediaPlayer p = new IjkMediaPlayer();
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-hevc", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-all-videos", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 8L * 1024 * 1024);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 1500000L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 512L * 1024);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "timeout", 10000000L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 0L);
+            p.setVolume(0f, 0f);
+            p.setDataSource(channels.get(target).url);
+            p.setOnPreparedListener(new IMediaPlayer.OnPreparedListener() {
+                @Override public void onPrepared(IMediaPlayer mp) {
+                    if (spare == p) {
+                        spareReady = true;
+                        Log.i(TAG, "preload ready #" + target);
+                    }
+                }
+            });
+            p.prepareAsync();
+            spare = p;
+            spareIndex = target;
+            spareReady = false;
+        } catch (Throwable t) {
+            Log.w(TAG, "preload failed " + t);
+        }
+    }
+
+    private void releaseSpare() {
+        if (spare != null) {
+            try { spare.stop(); } catch (Throwable ignored) { }
+            try { spare.release(); } catch (Throwable ignored) { }
+            spare = null;
+        }
+        spareIndex = -1;
+        spareReady = false;
     }
 
 
@@ -369,6 +442,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
 
     @Override protected void onStop() {
         handler.removeCallbacks(statTick);
+        releaseSpare();
         super.onStop();
         // 离开直播页就释放解码器，避免和桌面预览抢硬件
         if (player != null) {
