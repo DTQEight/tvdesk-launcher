@@ -959,7 +959,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             new Thread(new Runnable() {
                 @Override public void run() {
                     try {
-                        List<JellyfinClient.Item> items = JellyfinClient.series(JellyfinClient.LIB_CN_DRAMA, 40);
+                        List<JellyfinClient.Item> items = JellyfinClient.backdropPool(200);
                         final List<String> urls = new java.util.ArrayList<>();
                         for (JellyfinClient.Item it : items) urls.add(backdropUrl(it));
                         runOnUiThread(new Runnable() {
@@ -976,7 +976,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }, "cyt-backdrop").start();
 
             handler.postDelayed(new Runnable() {
-                @Override public void run() { nextBackdrop(); handler.postDelayed(this, 60000L); }
+                @Override public void run() { nextBackdrop(); handler.postDelayed(this, 30000L); }
             }, 60000L);
         } catch (Throwable t) {
             android.util.Log.e("CYT-BG", "installBackdrop failed " + t);

@@ -91,6 +91,40 @@ public final class JellyfinClient {
         return out;
     }
 
+
+    /** 全库随机取一批有剧照（Backdrop）的条目，用作桌面背景。 */
+    public static List<Item> backdropPool(int limit) {
+        List<Item> out = new ArrayList<>();
+        HttpURLConnection c = null;
+        BufferedReader r = null;
+        try {
+            String url = BASE + "/Items?Recursive=true&IncludeItemTypes=Series,Movie"
+                    + "&Fields=ProductionYear&ImageTypeLimit=1&EnableImageTypes=Backdrop"
+                    + "&SortBy=Random&Limit=" + limit;
+            c = open(url);
+            if (c.getResponseCode() != 200) { Log.w(TAG, "pool http " + c.getResponseCode()); return out; }
+            r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = r.readLine()) != null) sb.append(line);
+            JSONObject root = new JSONObject(sb.toString());
+            JSONArray items = root.optJSONArray("Items");
+            if (items == null) return out;
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject o = items.getJSONObject(i);
+                out.add(new Item(o.optString("Id"), o.optString("Name"), null,
+                        o.optInt("ProductionYear", 0), null, false));
+            }
+            Log.i(TAG, "backdrop pool=" + out.size());
+        } catch (Throwable t) {
+            Log.e(TAG, "pool failed " + t);
+        } finally {
+            try { if (r != null) r.close(); } catch (Throwable ignored) { }
+            try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
+        }
+        return out;
+    }
+
     /** 下载封面；失败返回 null。 */
     public static Bitmap poster(String url, int maxH) {
         HttpURLConnection c = null;
