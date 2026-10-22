@@ -22,7 +22,8 @@ public final class LiveSource {
     public static final class Ch {
         public final String name;
         public final String url;
-        Ch(String n, String u) { name = n; url = u; }
+        public final String group;
+        Ch(String n, String u, String g) { name = n; url = u; group = g == null ? "" : g; }
     }
 
     private LiveSource() { }
@@ -55,7 +56,7 @@ public final class LiveSource {
                         pending = i >= 0 && i + 1 < line.length() ? line.substring(i + 1).trim() : "未知";
                     }
                 } else if (!line.startsWith("#") && pending != null) {
-                    if (!"订阅信息".equals(group)) out.add(new Ch(pending, line));
+                    if (!"订阅信息".equals(group)) out.add(new Ch(pending, line, group));
                     pending = null;
                 }
             }
@@ -74,5 +75,36 @@ public final class LiveSource {
             if (list.get(i).name.contains("翡翠台")) return i;
         }
         return list.isEmpty() ? -1 : 0;
+    }
+    /** 按 OK影视 的习惯把 3000+ 频道分成十来类。 */
+    public static java.util.LinkedHashMap<String, java.util.List<Ch>> categories(java.util.List<Ch> all) {
+        java.util.LinkedHashMap<String, java.util.List<Ch>> map = new java.util.LinkedHashMap<>();
+        String[] names = {"全部", "央视", "卫视", "港澳台", "影视", "体育", "少儿", "地方", "音乐", "栏目", "其他"};
+        for (String n : names) map.put(n, new java.util.ArrayList<Ch>());
+        map.get("全部").addAll(all);
+        for (Ch c : all) {
+            String g = c.group == null ? "" : c.group;
+            String n = c.name == null ? "" : c.name;
+            String cat;
+            if (n.matches(".*(翡翠|明珠|凤凰|香港|澳门|台湾|TVB|无线).*")) cat = "港澳台";
+            else if (g.startsWith("央视") || g.contains("央卫")) cat = "央视";
+            else if (g.contains("卫视")) cat = "卫视";
+            else if (g.contains("体育")) cat = "体育";
+            else if (g.contains("少儿")) cat = "少儿";
+            else if (g.contains("地方")) cat = "地方";
+            else if (g.contains("电影") || g.contains("剧场") || g.startsWith("VIP")) cat = "影视";
+            else if (g.contains("歌") || g.contains("舞曲") || g.contains("音乐")) cat = "音乐";
+            else if (g.contains("春晚") || g.contains("小品") || g.contains("解说")
+                    || g.contains("户外") || g.contains("菜谱") || g.contains("戏曲")
+                    || g.contains("电台") || g.contains("轮播") || g.contains("4K") || g.contains("高清")) cat = "栏目";
+            else cat = "其他";
+            map.get(cat).add(c);
+        }
+        // 丢掉空分类
+        java.util.LinkedHashMap<String, java.util.List<Ch>> out = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, java.util.List<Ch>> e : map.entrySet()) {
+            if (!e.getValue().isEmpty()) out.put(e.getKey(), e.getValue());
+        }
+        return out;
     }
 }

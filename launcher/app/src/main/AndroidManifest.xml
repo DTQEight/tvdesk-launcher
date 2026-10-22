@@ -47,6 +47,7 @@
 
         <activity
             android:name=".MainActivity"
+            android:label="TVDesk"
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
@@ -58,6 +59,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!-- Listed in the TV's own app list, so it can be opened from the stock home screen too. -->
             <intent-filter>
@@ -147,7 +149,7 @@
         </service>
             <activity
             android:name=".LivePlayerActivity"
-            android:exported="false"
+            android:exported="true"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize" />
             <activity
