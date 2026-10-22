@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -66,6 +67,7 @@ public class JellyfinPlayerActivity extends FragmentActivity
     private int curSub = -1, curEp = -1;
 
     private final Handler handler = new Handler();
+    private TextView seekTip;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -82,6 +84,16 @@ public class JellyfinPlayerActivity extends FragmentActivity
         FrameLayout container = new FrameLayout(this);
         container.setId(View.generateViewId());
         root.addView(container, new FrameLayout.LayoutParams(-1, -1));
+
+        seekTip = new TextView(this);
+        seekTip.setTextColor(Color.WHITE);
+        seekTip.setTextSize(30);
+        seekTip.setPadding(dp(28), dp(14), dp(28), dp(14));
+        seekTip.setBackgroundColor(0xCC000000);
+        seekTip.setVisibility(View.GONE);
+        FrameLayout.LayoutParams stlp = new FrameLayout.LayoutParams(-2, -2);
+        stlp.gravity = Gravity.CENTER;
+        root.addView(seekTip, stlp);
 
         buildSidePanel(root);
         setContentView(root);
@@ -221,6 +233,19 @@ public class JellyfinPlayerActivity extends FragmentActivity
     @Override public void onAudioTrack() { showAudioMenu(); }
     @Override public void onSpeed() { showSpeedMenu(); }
     @Override public void onNext() { playNext(); }
+    @Override public void onSeekBack() { seekBy(-15000); }
+
+    @Override public void onSeekForward() { seekBy(15000); }
+
+
+    @Override public void onSeekFeedback() {
+        try {
+            long pos = player == null ? 0 : player.getCurrentPosition();
+            long dur = player == null ? 0 : player.getDuration();
+            showSeekTip(clock(pos) + "  /  " + clock(dur));
+        } catch (Throwable ignored) { }
+    }
+
     @Override public void onEpisodes() { showEpisodeMenu(); }
 
     // ---------------- 菜单 ----------------
@@ -390,6 +415,83 @@ public class JellyfinPlayerActivity extends FragmentActivity
     }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+
+    // ---------------- 遥控器播放控制 ----------------
+
+    /**
+     * 控制条隐藏时：左右 = ±15 秒，OK = 播放/暂停，上下 = 唤出控制条。
+     * 控制条已显示时交给 Leanback 自己处理（这样按钮和进度条都还能操作）。
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        if (e.getAction() == KeyEvent.ACTION_DOWN && !panelShown
+                && fragment != null && !fragment.isControlsOverlayVisible()) {
+            switch (e.getKeyCode()) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_MEDIA_REWIND:
+                    seekBy(-15000);
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                    seekBy(15000);
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                case KeyEvent.KEYCODE_ENTER:
+                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                    togglePlay();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    fragment.showControlsOverlay(true);
+                    return true;
+            }
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
+    private void togglePlay() {
+        try {
+            if (player == null) return;
+            if (player.isPlaying()) player.pause();
+            else player.start();
+            showSeekTip(player.isPlaying() ? "▶" : "❚❚");
+        } catch (Throwable ignored) { }
+    }
+
+    /** 相对当前位置跳转（毫秒）。 */
+    private void seekBy(long delta) {
+        try {
+            if (player == null) return;
+            long dur = player.getDuration();
+            long pos = player.getCurrentPosition() + delta;
+            if (pos < 0) pos = 0;
+            if (dur > 0 && pos > dur - 500) pos = Math.max(0, dur - 500);
+            player.seekTo(pos);
+            showSeekTip((delta < 0 ? "« " : "» ") + clock(pos) + "  /  " + clock(dur));
+        } catch (Throwable ignored) { }
+    }
+
+    private void showSeekTip(String text) {
+        if (seekTip == null) return;
+        seekTip.setText(text);
+        seekTip.setVisibility(View.VISIBLE);
+        handler.removeCallbacks(hideSeekTip);
+        handler.postDelayed(hideSeekTip, 1200);
+    }
+
+    private final Runnable hideSeekTip = new Runnable() {
+        @Override public void run() { if (seekTip != null) seekTip.setVisibility(View.GONE); }
+    };
+
+    private static String clock(long ms) {
+        if (ms < 0) ms = 0;
+        long s = ms / 1000;
+        long h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
+        return h > 0 ? String.format("%d:%02d:%02d", h, m, sec)
+                : String.format("%d:%02d", m, sec);
+    }
+
+
 
     @Override protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);

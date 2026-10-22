@@ -22,7 +22,21 @@ public class IjkPlayerAdapter extends PlayerAdapter {
 
     @Override public void play() { mp.start(); }
     @Override public void pause() { mp.pause(); }
-    @Override public void seekTo(long position) { mp.seekTo(position); }
+    @Override public void seekTo(long position) { mp.seekTo(Math.max(0, position)); }
+
+    /** 快退 15 秒 */
+    @Override public void rewind() { seekBy(-15000); }
+
+    /** 快进 15 秒 */
+    @Override public void fastForward() { seekBy(15000); }
+
+    private void seekBy(long delta) {
+        long dur = mp.getDuration();
+        long pos = mp.getCurrentPosition() + delta;
+        if (pos < 0) pos = 0;
+        if (dur > 0 && pos > dur - 500) pos = Math.max(0, dur - 500);
+        mp.seekTo(pos);
+    }
     @Override public boolean isPlaying() { return mp.isPlaying(); }
     @Override public boolean isPrepared() { return mp.getDuration() > 0; }
     @Override public long getCurrentPosition() { return mp.getCurrentPosition(); }

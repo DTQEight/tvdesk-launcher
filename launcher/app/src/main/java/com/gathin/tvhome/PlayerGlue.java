@@ -1,6 +1,7 @@
 package com.gathin.tvhome;
 
 import android.content.Context;
+import android.view.KeyEvent;
 
 import androidx.core.content.ContextCompat;
 import androidx.leanback.media.PlaybackTransportControlGlue;
@@ -8,19 +9,30 @@ import androidx.leanback.widget.Action;
 import androidx.leanback.widget.ArrayObjectAdapter;
 import androidx.leanback.widget.PlaybackControlsRow;
 
-/** Leanback 的传输控制（播放/暂停、进度条、时间）+ 自定义次级按钮。 */
+/**
+ * Leanback 播放控制条：
+ *  - 主行：播放/暂停（Leanback 自带）
+ *  - 次级行：退15秒 / 进15秒 / 字幕 / 音轨 / 倍速 / 下一集 / 选集
+ *
+ * 注意：Leanback 的 transport glue 只处理 PlayPause / SkipNext / SkipPrevious，
+ *      自带的 RewindAction / FastForwardAction 点了没反应，所以跳转按钮全部自定义。
+ */
 public class PlayerGlue extends PlaybackTransportControlGlue<IjkPlayerAdapter> {
 
     public interface Listener {
+        void onSeekBack();
+        void onSeekForward();
         void onSubtitles();
         void onAudioTrack();
         void onSpeed();
         void onNext();
         void onEpisodes();
+        void onSeekFeedback();
     }
 
     private final Listener listener;
-    private PlaybackControlsRow.MultiAction subAction, audioAction, speedAction, nextAction, listAction;
+    private PlaybackControlsRow.MultiAction rewAction, ffAction, subAction,
+            audioAction, speedAction, nextAction, listAction;
 
     public PlayerGlue(Context context, IjkPlayerAdapter adapter, Listener listener) {
         super(context, adapter);
@@ -39,21 +51,17 @@ public class PlayerGlue extends PlaybackTransportControlGlue<IjkPlayerAdapter> {
         onHostStart();
     }
 
-    /** 主按钮行：快退 + 播放/暂停 + 快进（Jellyfin 也是这三颗）。 */
-    @Override
-    protected void onCreatePrimaryActions(ArrayObjectAdapter primary) {
-        super.onCreatePrimaryActions(primary);
-        primary.add(0, new PlaybackControlsRow.RewindAction(getContext()));
-        primary.add(2, new PlaybackControlsRow.FastForwardAction(getContext()));
-    }
-
     @Override
     protected void onCreateSecondaryActions(ArrayObjectAdapter secondaryActionsAdapter) {
+        rewAction = action(10, R.drawable.ic_p_rew10, "退15秒");
+        ffAction = action(11, R.drawable.ic_p_fwd10, "进15秒");
         subAction = action(0, R.drawable.ic_p_sub, "字幕");
         audioAction = action(1, R.drawable.ic_p_audio, "音轨");
         speedAction = action(2, R.drawable.ic_p_speed, "倍速");
         nextAction = action(3, R.drawable.ic_p_next, "下一集");
         listAction = action(4, R.drawable.ic_p_list, "选集");
+        secondaryActionsAdapter.add(rewAction);
+        secondaryActionsAdapter.add(ffAction);
         secondaryActionsAdapter.add(subAction);
         secondaryActionsAdapter.add(audioAction);
         secondaryActionsAdapter.add(speedAction);
@@ -63,11 +71,32 @@ public class PlayerGlue extends PlaybackTransportControlGlue<IjkPlayerAdapter> {
 
     @Override
     public void onActionClicked(Action action) {
+        if (action == rewAction) { listener.onSeekBack(); return; }
+        if (action == ffAction) { listener.onSeekForward(); return; }
         if (action == subAction) { listener.onSubtitles(); return; }
         if (action == audioAction) { listener.onAudioTrack(); return; }
         if (action == speedAction) { listener.onSpeed(); return; }
         if (action == nextAction) { listener.onNext(); return; }
         if (action == listAction) { listener.onEpisodes(); return; }
         super.onActionClicked(action);
+    }
+
+    @Override
+    public boolean onKey(android.view.View v, int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND
+                || keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND) listener.onSeekBack();
+                else listener.onSeekForward();
+            }
+            return true;
+        }
+        boolean handled = super.onKey(v, keyCode, event);
+        if (handled && event.getAction() == KeyEvent.ACTION_DOWN
+                && (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            if (listener != null) listener.onSeekFeedback();
+        }
+        return handled;
     }
 }
