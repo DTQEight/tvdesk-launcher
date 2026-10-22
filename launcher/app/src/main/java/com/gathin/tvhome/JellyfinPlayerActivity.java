@@ -195,6 +195,7 @@ public class JellyfinPlayerActivity extends FragmentActivity
                     if (cb != null) cb.onPlayStateChanged(adapter);
                     scanTracks();
                     attachSubtitleListener();
+                    applyDebugTrack();
                     final String id = itemId;
                     final long pos = startMs;
                     new Thread(new Runnable() { @Override public void run() { JellyfinClient.reportStart(id, pos); } }).start();
@@ -208,6 +209,23 @@ public class JellyfinPlayerActivity extends FragmentActivity
     }
 
     /** 按设置调整字幕字号/颜色。 */
+    /** 调试用：--ei sub N 直接选中第 N 条字幕，--ei seek ms 跳到指定位置。 */
+    private void applyDebugTrack() {
+        try {
+            int sub = getIntent().getIntExtra("sub", -1);
+            if (sub >= 0 && sub < subIdx.size()) {
+                player.selectTrack(subIdx.get(sub));
+                curSub = subIdx.get(sub);
+                Log.i(TAG, "debug subtitle track " + subIdx.get(sub));
+            }
+            int seek = getIntent().getIntExtra("seek", -1);
+            if (seek >= 0) player.seekTo(seek);
+        } catch (Throwable t) {
+            Log.w(TAG, "applyDebugTrack failed " + t);
+        }
+    }
+
+
     private void applySubStyle() {
         int size = TVDeskPrefs.subSize(this);
         int sp = size == 0 ? 22 : size == 2 ? 40 : 30;
