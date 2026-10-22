@@ -952,7 +952,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             View dim = new View(this);
             dim.setBackground(new android.graphics.drawable.GradientDrawable(
                     android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                    new int[]{0xB8000000, 0xE0000000}));
+                    new int[]{0x8C000000, 0xB0000000}));
             root.addView(dim, 2, full);
 
             new Thread(new Runnable() {
@@ -1004,10 +1004,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 android.graphics.Bitmap bm = JellyfinClient.poster(url, 1080);
                 if (bm == null) return;
                 try {
-                    // 缩到 1/10 再放大，得到柔和模糊
+                    // 缩到 1/4 再放大，得到柔和模糊
                     int w = bm.getWidth(), h = bm.getHeight();
                     android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(
-                            bm, Math.max(8, w / 10), Math.max(8, h / 10), true);
+                            bm, Math.max(16, w / 4), Math.max(16, h / 4), true);
                     android.graphics.Bitmap blur = android.graphics.Bitmap.createScaledBitmap(small, w, h, true);
                     if (blur != small) small.recycle();
                     bm = blur;
@@ -1022,7 +1022,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 });
             }
         }, "cyt-backdrop-img").start();
-    }
     }
 
 
