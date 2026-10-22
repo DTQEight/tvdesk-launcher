@@ -950,6 +950,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** 背景：Jellyfin 剧集剧照，每 60 秒随机换一张（交叉淡入）。 */
     private void installBackdrop() {
         try {
+            if (!TVDeskPrefs.backdrop(this)) return;   // 设置里关掉了就不铺背景
             FrameLayout.LayoutParams full = new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
             bgA = new ImageView(this);
@@ -987,7 +988,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }, "cyt-backdrop").start();
 
             handler.postDelayed(new Runnable() {
-                @Override public void run() { nextBackdrop(); handler.postDelayed(this, 30000L); }
+                @Override public void run() { nextBackdrop(); handler.postDelayed(this, TVDeskPrefs.interval(MainActivity.this)); }
             }, 60000L);
         } catch (Throwable t) {
             android.util.Log.e("CYT-BG", "installBackdrop failed " + t);
@@ -1545,6 +1546,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private void startLive(final SurfaceHolder holder) {
         if (livePreview != null) livePreview.release();
+        if (!TVDeskPrefs.preview(this)) return;
         livePreview = new LivePreview();
         if (liveChannels != null && liveIndex >= 0) {
             livePreview.play(liveChannels.get(liveIndex).url, holder.getSurface());

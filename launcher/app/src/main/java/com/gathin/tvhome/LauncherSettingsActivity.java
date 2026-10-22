@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -112,8 +113,70 @@ public final class LauncherSettingsActivity extends Activity {
         });
         findViewById(R.id.tvSettingsChoice).setOnClickListener(v ->
                 open(new Intent(Settings.ACTION_SETTINGS)));
+        addTvDeskRow();
         refresh();
         columnChoices[Math.max(0, Math.min(columns - 4, 3))].requestFocus();
+    }
+
+    /** 在设置页末尾追加「TVDesk 设置」一行（背景轮播 / 天气 / 预览）。 */
+    private void addTvDeskRow() {
+        try {
+            android.view.ViewGroup content = (android.view.ViewGroup) findViewById(android.R.id.content);
+            ScrollView sv = (ScrollView) content.getChildAt(0);
+            LinearLayout root = (LinearLayout) sv.getChildAt(0);
+            TextView row = new TextView(this);
+            row.setText("TVDesk 设置（背景 / 天气 / 预览）");
+            row.setTextColor(0xFFE6EEF5);
+            row.setTextSize(18);
+            row.setPadding(0, 28, 0, 28);
+            row.setFocusable(true);
+            row.setFocusableInTouchMode(true);
+            row.setOnClickListener(v -> showTvDeskDialog());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = 18;
+            root.addView(row, lp);
+        } catch (Throwable t) {
+            android.util.Log.w("CYT-PREFS", "addTvDeskRow failed " + t);
+        }
+    }
+
+    private void showTvDeskDialog() {
+        final android.content.SharedPreferences p = TVDeskPrefs.get(this);
+        final String[] items = {
+                "背景随机轮播：" + (p.getBoolean(TVDeskPrefs.KEY_BACKDROP, true) ? "开" : "关"),
+                "轮播间隔：" + (p.getInt(TVDeskPrefs.KEY_INTERVAL, 30000) / 1000) + " 秒",
+                "天气定位：" + (p.getBoolean(TVDeskPrefs.KEY_WEATHER_HOME, false) ? "固定佛山顺德" : "跟随 IP"),
+                "直播预览：" + (p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true) ? "开" : "关")
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("TVDesk 设置")
+                .setItems(items, (d, which) -> {
+                    switch (which) {
+                        case 0:
+                            p.edit().putBoolean(TVDeskPrefs.KEY_BACKDROP,
+                                    !p.getBoolean(TVDeskPrefs.KEY_BACKDROP, true)).apply();
+                            break;
+                        case 1: {
+                            int cur = p.getInt(TVDeskPrefs.KEY_INTERVAL, 30000);
+                            int next = cur == 30000 ? 60000 : cur == 60000 ? 120000 : 30000;
+                            p.edit().putInt(TVDeskPrefs.KEY_INTERVAL, next).apply();
+                            break;
+                        }
+                        case 2:
+                            p.edit().putBoolean(TVDeskPrefs.KEY_WEATHER_HOME,
+                                    !p.getBoolean(TVDeskPrefs.KEY_WEATHER_HOME, false)).apply();
+                            break;
+                        case 3:
+                            p.edit().putBoolean(TVDeskPrefs.KEY_PREVIEW,
+                                    !p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true)).apply();
+                            break;
+                    }
+                    Toast.makeText(this, "已保存，回桌面生效", Toast.LENGTH_SHORT).show();
+                    showTvDeskDialog();
+                })
+                .setNegativeButton("关闭", null)
+                .show();
     }
 
     private void reverseRow(TextView[] views) {

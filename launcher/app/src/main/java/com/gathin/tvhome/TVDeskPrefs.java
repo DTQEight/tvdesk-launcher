@@ -1,0 +1,26 @@
+package com.gathin.tvhome;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+/** TVDesk 自己的偏好（背景轮播 / 天气定位 / 直播预览）。 */
+public final class TVDeskPrefs {
+
+    private static final String NAME = "tvdesk_prefs";
+
+    public static final String KEY_BACKDROP = "backdrop_enabled";
+    public static final String KEY_INTERVAL = "backdrop_interval_ms";
+    public static final String KEY_WEATHER_HOME = "weather_home";     // true = 固定佛山顺德
+    public static final String KEY_PREVIEW = "preview_enabled";
+
+    private TVDeskPrefs() { }
+
+    public static SharedPreferences get(Context ctx) {
+        return ctx.getApplicationContext().getSharedPreferences(NAME, Context.MODE_PRIVATE);
+    }
+
+    public static boolean backdrop(Context ctx) { return get(ctx).getBoolean(KEY_BACKDROP, true); }
+    public static int interval(Context ctx) { return get(ctx).getInt(KEY_INTERVAL, 30000); }
+    public static boolean weatherHome(Context ctx) { return get(ctx).getBoolean(KEY_WEATHER_HOME, false); }
+    public static boolean preview(Context ctx) { return get(ctx).getBoolean(KEY_PREVIEW, true); }
+}
