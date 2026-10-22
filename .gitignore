@@ -1,0 +1,7 @@
+# 构建产物
+launcher/.gradle/
+launcher/app/build/
+launcher/build/
+launcher/local.properties
+*.iml
+.idea/
