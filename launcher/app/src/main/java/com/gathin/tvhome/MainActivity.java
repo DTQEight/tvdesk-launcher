@@ -1211,8 +1211,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             d.setColor(0xFFFFFFFF);
             d.setStroke(dp(3), 0xFF00A4DC);
         } else {
-            d.setColor(0x5718222C);
-            d.setStroke(dp(1), 0x33FFFFFF);
+            d.setColor(0x1F101820);   // 12% 深色，基本只剩一层薄雾
+            d.setStroke(dp(1), 0x2AFFFFFF);
         }
         return d;
     }
