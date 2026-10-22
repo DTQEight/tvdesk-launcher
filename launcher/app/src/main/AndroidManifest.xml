@@ -153,7 +153,7 @@
             <activity
             android:name=".JellyfinPlayerActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:theme="@style/Theme.TvPlayer"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize" />
     </application>
 </manifest>
