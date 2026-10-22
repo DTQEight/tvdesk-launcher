@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -126,7 +127,7 @@ public final class LauncherSettingsActivity extends Activity {
             ScrollView sv = (ScrollView) content.getChildAt(0);
             LinearLayout root = (LinearLayout) sv.getChildAt(0);
             TextView row = new TextView(this);
-            row.setText("▶ TVDesk 设置（背景 / 天气 / 字幕 / 预览）");
+            row.setText("▶ TVDesk 设置（背景轮播 / 天气定位 / 直播预览）");
             row.setTextColor(0xFFE6EEF5);
             row.setTextSize(18);
             row.setPadding(0, 28, 0, 28);
@@ -142,6 +143,29 @@ public final class LauncherSettingsActivity extends Activity {
         } catch (Throwable t) {
             android.util.Log.w("CYT-PREFS", "addTvDeskRow failed " + t);
         }
+    }
+
+    /** 隐藏「每行应用数量 / Rows below dock」——这两项对现在的桌面没有效果。 */
+    private void hideGridOptions(LinearLayout root) {
+        try {
+            hideBlock(findViewById(R.id.columns4));
+            hideBlock(findViewById(R.id.rows0));
+        } catch (Throwable t) {
+            android.util.Log.w("CYT-PREFS", "hideGridOptions " + t);
+        }
+    }
+
+    private void hideBlock(View any) {
+        if (any == null) return;
+        android.view.ViewGroup row = (android.view.ViewGroup) any.getParent();
+        if (row == null) return;
+        android.view.ViewParent p = row.getParent();
+        if (p instanceof LinearLayout) {
+            LinearLayout col = (LinearLayout) p;
+            int idx = col.indexOfChild(row);
+            if (idx > 0) col.getChildAt(idx - 1).setVisibility(View.GONE);   // 标题
+        }
+        row.setVisibility(View.GONE);
     }
 
     private void showTvDeskDialog() {
