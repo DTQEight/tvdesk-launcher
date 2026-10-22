@@ -987,7 +987,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private static String backdropUrl(JellyfinClient.Item it) {
         String imgId = it.seriesId != null ? it.seriesId : it.id;
-        return JellyfinClient.BASE + "/Items/" + imgId + "/Images/Backdrop/0?maxWidth=1600&quality=85";
+        return JellyfinClient.BASE + "/Items/" + imgId + "/Images/Backdrop/0?maxWidth=1920&quality=95";
     }
 
     /** 随机换下一张（不重复当前），下载完淡入。 */
@@ -1010,7 +1010,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     // 缩到 1/4 再放大，得到柔和模糊
                     int w = bm.getWidth(), h = bm.getHeight();
                     android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(
-                            bm, Math.max(16, w / 4), Math.max(16, h / 4), true);
+                            bm, Math.max(64, w / 2), Math.max(64, h / 2), true);
                     android.graphics.Bitmap blur = android.graphics.Bitmap.createScaledBitmap(small, w, h, true);
                     if (blur != small) small.recycle();
                     bm = blur;
