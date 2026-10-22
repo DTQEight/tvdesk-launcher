@@ -1160,7 +1160,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     tv.setSingleLine(true);
                     tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
                     tv.setPadding(dp(12), dp(8), dp(12), dp(10));
-                    tv.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                    tv.setGravity(android.view.Gravity.CENTER);
                     tv.setBackgroundColor(0xFF141C24);
                     try {
                         tv.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(
