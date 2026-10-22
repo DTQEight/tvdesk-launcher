@@ -4,7 +4,7 @@ import android.os.Handler;
 import android.os.Looper;
 
 import androidx.leanback.media.PlayerAdapter;
-import androidx.leanback.widget.PlaybackControlsRow;
+import androidx.leanback.media.PlaybackBaseControlGlue;
 
 import tv.danmaku.ijk.media.player.IjkMediaPlayer;
 
@@ -14,6 +14,7 @@ public class IjkPlayerAdapter extends PlayerAdapter {
     private final IjkMediaPlayer mp;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean progressEnabled;
+    private int tickCount;
 
     public IjkPlayerAdapter(IjkMediaPlayer player) {
         this.mp = player;
@@ -29,9 +30,9 @@ public class IjkPlayerAdapter extends PlayerAdapter {
     @Override public long getBufferedPosition() { return mp.getCurrentPosition(); }
 
     @Override public long getSupportedActions() {
-        return PlaybackControlsRow.ACTION_PLAY_PAUSE
-                | PlaybackControlsRow.ACTION_REWIND
-                | PlaybackControlsRow.ACTION_FAST_FORWARD;
+        return PlaybackBaseControlGlue.ACTION_PLAY_PAUSE
+                | PlaybackBaseControlGlue.ACTION_REWIND
+                | PlaybackBaseControlGlue.ACTION_FAST_FORWARD;
     }
 
     @Override public void setProgressUpdatingEnabled(boolean enabled) {
@@ -45,6 +46,7 @@ public class IjkPlayerAdapter extends PlayerAdapter {
         @Override public void run() {
             if (!progressEnabled) return;
             Callback cb = getCallback();
+
             if (cb != null) {
                 cb.onCurrentPositionChanged(IjkPlayerAdapter.this);
                 cb.onBufferedPositionChanged(IjkPlayerAdapter.this);

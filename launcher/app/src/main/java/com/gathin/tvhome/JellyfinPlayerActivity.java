@@ -97,6 +97,9 @@ public class JellyfinPlayerActivity extends FragmentActivity
         glue.setHost(new PlaybackSupportFragmentGlueHost(fragment));
         glue.setTitle("");
         glue.forceStart();
+        Log.i(TAG, "host set: gluePrepared=" + glue.isPrepared()
+                + " adapterCb=" + (adapter.getCallback() != null)
+                + " adapterPrepared=" + adapter.isPrepared());
         glue.setSubtitle("");
 
         seriesId = getIntent().getStringExtra("seriesId");
@@ -153,6 +156,10 @@ public class JellyfinPlayerActivity extends FragmentActivity
                     durationMs = mp.getDuration() > 0 ? mp.getDuration() : 0;
                     if (speed != 1.0f) player.setSpeed(speed);
                     if (startMs > 0) mp.seekTo(startMs);
+                    Log.i(TAG, "onPrepared: dur=" + mp.getDuration()
+                            + " adapterPrepared=" + adapter.isPrepared()
+                            + " cb=" + (adapter.getCallback() != null)
+                            + " gluePrepared=" + glue.isPrepared());
                     androidx.leanback.media.PlayerAdapter.Callback cb = adapter.getCallback();
                     if (cb != null) {
                         cb.onDurationChanged(adapter);

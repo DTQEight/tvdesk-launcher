@@ -39,6 +39,14 @@ public class PlayerGlue extends PlaybackTransportControlGlue<IjkPlayerAdapter> {
         onHostStart();
     }
 
+    /** 主按钮行：快退 + 播放/暂停 + 快进（Jellyfin 也是这三颗）。 */
+    @Override
+    protected void onCreatePrimaryActions(ArrayObjectAdapter primary) {
+        super.onCreatePrimaryActions(primary);
+        primary.add(0, new PlaybackControlsRow.RewindAction(getContext()));
+        primary.add(2, new PlaybackControlsRow.FastForwardAction(getContext()));
+    }
+
     @Override
     protected void onCreateSecondaryActions(ArrayObjectAdapter secondaryActionsAdapter) {
         subAction = action(0, R.drawable.ic_p_sub, "字幕");
