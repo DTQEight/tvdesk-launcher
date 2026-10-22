@@ -21,10 +21,11 @@ public final class LivePreview {
         try {
             IjkMediaPlayer p = new IjkMediaPlayer();
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1L);
-            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "fflags", "nobuffer");
-            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "flush_packets", 1L);
-            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 1000000L);
-            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 131072L);
+            // 允许缓冲，减少网络抖动导致的卡顿（原来 nobuffer 太激进）
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 8L * 1024 * 1024);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 1500000L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 512L * 1024);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 1L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "loop", 1L);
@@ -45,6 +46,11 @@ public final class LivePreview {
         } catch (Throwable t) {
             Log.e(TAG, "preview failed " + t);
         }
+    }
+
+    /** 桌面不可见时释放解码器（否则进直播全屏会两个解码器抢资源）。 */
+    public void stop() {
+        release();
     }
 
     public void release() {

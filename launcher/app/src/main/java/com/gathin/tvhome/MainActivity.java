@@ -831,6 +831,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         root.removeCallbacks(showIdleClock);
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
+        if (livePreview != null) livePreview.stop();   // 释放直播预览解码器
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();

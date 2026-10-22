@@ -207,10 +207,11 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
         try {
             IjkMediaPlayer p = new IjkMediaPlayer();
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1L);
-            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "fflags", "nobuffer");
-            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "flush_packets", 1L);
-            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 1000000L);
-            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 131072L);
+            // 缓冲优先：直播源抖动大，nobuffer 会一直卡
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 12L * 1024 * 1024);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 1500000L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 512L * 1024);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 1L);
             p.setDisplay(surfaceView.getHolder());
@@ -275,6 +276,17 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+
+    @Override protected void onStop() {
+        super.onStop();
+        // 离开直播页就释放解码器，避免和桌面预览抢硬件
+        if (player != null) {
+            try { player.stop(); } catch (Throwable ignored) { }
+            try { player.release(); } catch (Throwable ignored) { }
+            player = null;
+        }
+    }
+
 
     @Override
     protected void onDestroy() {
