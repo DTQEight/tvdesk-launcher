@@ -41,6 +41,10 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
     private int index = -1;
     private int jump;
     private int retry;
+    private String wantName;
+    private String autoPrefix;   // 自动换源用：频道名前缀
+    private int autoTries, autoSkip;
+    private long autoStartMs;
 
     private LinearLayout panel;
     private ListView catList;
@@ -77,6 +81,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
         setContentView(root);
 
         index = getIntent().getIntExtra("index", -1);
+        wantName = getIntent().getStringExtra("name");
         new Thread(new Runnable() {
             @Override public void run() {
                 final List<LiveSource.Ch> list = LiveSource.load();
@@ -86,6 +91,7 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
                         channels = list;
                         cats = map;
                         if (channels.isEmpty()) { showOsd("频道加载失败"); return; }
+                        if (wantName != null) { for (int k = 0; k < channels.size(); k++) { if (channels.get(k).name.contains(wantName)) { index = k; break; } } }
                         if (index < 0 || index >= channels.size()) index = LiveSource.jade(channels);
                         if (index < 0) index = 0;
                         fillCats();
@@ -199,6 +205,8 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
     private void startPlay() {
         if (channels.isEmpty() || index < 0 || index >= channels.size()) return;
         LiveSource.Ch ch = channels.get(index);
+        autoPrefix = null;   // 先关掉自动换源（会选到 4K 源）
+        autoStartMs = System.currentTimeMillis();
         showOsd((index + 1) + "  " + ch.name + (ch.group.isEmpty() ? "" : "  ·  " + ch.group));
         if (player != null) {
             try { player.stop(); } catch (Throwable ignored) { }
@@ -208,6 +216,10 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
         try {
             IjkMediaPlayer p = new IjkMediaPlayer();
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1L);
+            // HEVC/其他编码也走硬解，否则 1080p H.265 只能软解（10~15fps）
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-hevc", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-all-videos", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 1L);
             // 缓冲优先：直播源抖动大，nobuffer 会一直卡
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 12L * 1024 * 1024);
@@ -247,6 +259,21 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
         } catch (Throwable t) { Log.e(TAG, "start failed " + t); }
     }
 
+    /** 找下一个同名（同前缀）的频道，exclude 是已经试过的次数偏移。 */
+    private int findNextSource(String prefix, int from, int skip) {
+        if (channels == null || prefix == null) return -1;
+        int seen = 0;
+        for (int k = from + 1; k < channels.size(); k++) {
+            String n = channels.get(k).name;
+            if (n != null && n.startsWith(prefix)) {
+                seen++;
+                if (seen == skip) return k;
+            }
+        }
+        return -1;
+    }
+
+
     private void showOsd(String text) {
         osd.setText(text);
         osd.setVisibility(View.VISIBLE);
@@ -269,6 +296,19 @@ public class LivePlayerActivity extends Activity implements SurfaceHolder.Callba
                         + " outFps=" + player.getVideoOutputFramesPerSecond()
                         + " vCache=" + player.getVideoCachedDuration() + "ms"
                         + " aCache=" + player.getAudioCachedDuration() + "ms");
+                // 解码明显跟不上（<18fps）时，自动换同名频道里更流畅的源
+                if (autoPrefix != null && autoTries < 2
+                        && System.currentTimeMillis() - autoStartMs > 10000
+                        && player.getVideoDecodeFramesPerSecond() < 18) {
+                    autoTries++;
+                    int next = findNextSource(autoPrefix, index, ++autoSkip);
+                    if (next >= 0) {
+                        Log.w("CYT-STAT", "too slow, switching to index " + next);
+                        index = next;
+                        autoStartMs = System.currentTimeMillis();
+                        startPlay();
+                    }
+                }
             } catch (Throwable ignored) { }
             handler.postDelayed(this, 2000);
         }

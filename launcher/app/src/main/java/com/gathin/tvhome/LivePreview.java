@@ -21,6 +21,10 @@ public final class LivePreview {
         try {
             IjkMediaPlayer p = new IjkMediaPlayer();
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1L);
+            // HEVC/其他编码也走硬解，否则 1080p H.265 只能软解（10~15fps）
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-hevc", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-all-videos", 1L);
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 1L);
             // 允许缓冲，减少网络抖动导致的卡顿（原来 nobuffer 太激进）
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1L);
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 8L * 1024 * 1024);
