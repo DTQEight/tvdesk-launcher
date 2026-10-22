@@ -121,28 +121,50 @@ public final class LauncherSettingsActivity extends Activity {
     }
 
     /** 在设置页末尾追加「TVDesk 设置」一行（背景轮播 / 天气 / 预览）。 */
+    /** 设置页第一行「TVDesk 设置」，带明显的焦点高亮。 */
     private void addTvDeskRow() {
         try {
             android.view.ViewGroup content = (android.view.ViewGroup) findViewById(android.R.id.content);
             ScrollView sv = (ScrollView) content.getChildAt(0);
             LinearLayout root = (LinearLayout) sv.getChildAt(0);
-            TextView row = new TextView(this);
+
+            final TextView row = new TextView(this);
             row.setText("▶ TVDesk 设置（背景轮播 / 天气定位 / 直播预览）");
-            row.setTextColor(0xFFE6EEF5);
             row.setTextSize(18);
-            row.setPadding(0, 28, 0, 28);
+            row.setPadding(24, 26, 24, 26);
             row.setFocusable(true);
             row.setFocusableInTouchMode(true);
+            row.setBackground(pill(false));
+            row.setTextColor(0xFFE6EEF5);
+            row.setOnFocusChangeListener((v, has) -> {
+                v.setBackground(pill(has));
+                row.setTextColor(has ? 0xFF0B1116 : 0xFFE6EEF5);
+                v.animate().scaleX(has ? 1.02f : 1f).scaleY(has ? 1.02f : 1f).setDuration(120).start();
+            });
             row.setOnClickListener(v -> showTvDeskDialog());
+
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             lp.topMargin = 10;
-            // 放到标题下面第一行，免得要滚到底才找得到
             root.addView(row, Math.min(1, root.getChildCount()), lp);
-            row.requestFocus();
+            row.post(new Runnable() { @Override public void run() { row.requestFocus(); } });
         } catch (Throwable t) {
             android.util.Log.w("CYT-PREFS", "addTvDeskRow failed " + t);
         }
+    }
+
+    /** 常态/焦点态背景：焦点是白底 + 青色描边，和桌面 tab 一致。 */
+    private android.graphics.drawable.GradientDrawable pill(boolean focused) {
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setCornerRadius(14 * getResources().getDisplayMetrics().density);
+        if (focused) {
+            d.setColor(0xFFFFFFFF);
+            d.setStroke((int) (3 * getResources().getDisplayMetrics().density), 0xFF00A4DC);
+        } else {
+            d.setColor(0x33121820);
+            d.setStroke((int) (1 * getResources().getDisplayMetrics().density), 0x33FFFFFF);
+        }
+        return d;
     }
 
     /** 隐藏「每行应用数量 / Rows below dock」——这两项对现在的桌面没有效果。 */
