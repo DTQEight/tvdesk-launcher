@@ -165,6 +165,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private final LinearLayout[] tabsRight = new LinearLayout[2];
     private LinearLayout tabRecent;
     private TextView weatherView;
+    private ImageView bgA, bgB;
+    private boolean bgFlip;
+    private java.util.List<String> backdrops = new java.util.ArrayList<>();
+    private int backdropPos;
     private java.util.List<JellyfinClient.Item> shelfAll;
     private android.graphics.Bitmap[] shelfBitmaps;
     private int shelfOffset;
@@ -596,6 +600,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         }
         if (festive) applyFestiveSkin((TextView) btnInputs, (TextView) btnSettings);
+        installBackdrop();
         installLive();
         armHomeProps();
         installShelf();
@@ -930,6 +935,97 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** 左：输入源两个独立 tab（HDMI1 / HDMI2）；右：最近观看 + 一个待定 tab。 */
     /** 左上角天气（时钟下方）：IP 定位 + Open-Meteo，30 分钟刷新一次。 */
     /** 左上角天气：直接插到日期上方（同一个 LinearLayout），天然对齐日期。 */
+    /** 背景：Jellyfin 剧集剧照，每 60 秒随机换一张（交叉淡入）。 */
+    private void installBackdrop() {
+        try {
+            FrameLayout.LayoutParams full = new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
+            bgA = new ImageView(this);
+            bgA.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            bgA.setAlpha(0f);
+            bgB = new ImageView(this);
+            bgB.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            bgB.setAlpha(0f);
+            root.addView(bgA, 0, full);
+            root.addView(bgB, 1, full);
+
+            View dim = new View(this);
+            dim.setBackground(new android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{0xB8000000, 0xE0000000}));
+            root.addView(dim, 2, full);
+
+            new Thread(new Runnable() {
+                @Override public void run() {
+                    try {
+                        List<JellyfinClient.Item> items = JellyfinClient.series(JellyfinClient.LIB_CN_DRAMA, 40);
+                        final List<String> urls = new java.util.ArrayList<>();
+                        for (JellyfinClient.Item it : items) urls.add(backdropUrl(it));
+                        runOnUiThread(new Runnable() {
+                            @Override public void run() {
+                                backdrops = urls;
+                                backdropPos = 0;
+                                nextBackdrop();
+                            }
+                        });
+                    } catch (Throwable t) {
+                        android.util.Log.w("CYT-BG", "load backdrops failed " + t);
+                    }
+                }
+            }, "cyt-backdrop").start();
+
+            handler.postDelayed(new Runnable() {
+                @Override public void run() { nextBackdrop(); handler.postDelayed(this, 60000L); }
+            }, 60000L);
+        } catch (Throwable t) {
+            android.util.Log.e("CYT-BG", "installBackdrop failed " + t);
+        }
+    }
+
+    private static String backdropUrl(JellyfinClient.Item it) {
+        String imgId = it.seriesId != null ? it.seriesId : it.id;
+        return JellyfinClient.BASE + "/Items/" + imgId + "/Images/Backdrop/0?maxWidth=1600&quality=85";
+    }
+
+    /** 随机换下一张（不重复当前），下载完淡入。 */
+    private void nextBackdrop() {
+        if (backdrops == null || backdrops.isEmpty()) return;
+        if (backdrops.size() > 1) {
+            int next = backdropPos;
+            while (next == backdropPos) next = (int) (Math.random() * backdrops.size());
+            backdropPos = next;
+        }
+        final String url = backdrops.get(backdropPos);
+        final ImageView target = bgFlip ? bgA : bgB;
+        final ImageView other = bgFlip ? bgB : bgA;
+        bgFlip = !bgFlip;
+        new Thread(new Runnable() {
+            @Override public void run() {
+                android.graphics.Bitmap bm = JellyfinClient.poster(url, 1080);
+                if (bm == null) return;
+                try {
+                    // 缩到 1/10 再放大，得到柔和模糊
+                    int w = bm.getWidth(), h = bm.getHeight();
+                    android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(
+                            bm, Math.max(8, w / 10), Math.max(8, h / 10), true);
+                    android.graphics.Bitmap blur = android.graphics.Bitmap.createScaledBitmap(small, w, h, true);
+                    if (blur != small) small.recycle();
+                    bm = blur;
+                } catch (Throwable ignored) { }
+                final android.graphics.Bitmap out = bm;
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        target.setImageBitmap(out);
+                        target.animate().alpha(1f).setDuration(900).start();
+                        other.animate().alpha(0f).setDuration(900).start();
+                    }
+                });
+            }
+        }, "cyt-backdrop-img").start();
+    }
+    }
+
+
     private void installWeather() {
         try {
             weatherView = new TextView(this);
