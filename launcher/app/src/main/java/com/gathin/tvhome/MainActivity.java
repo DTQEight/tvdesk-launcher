@@ -94,6 +94,7 @@ import java.util.Set;
 public class MainActivity extends Activity implements AppAdapter.TileListener {
     private View pageTabHome, pageTabRec;
     private boolean pageIsRecommend;
+    private View topScrim;
     private androidx.viewpager2.widget.ViewPager2 pager;
     private RecommendView recommendView;
 
@@ -1194,7 +1195,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     new androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
                         @Override public void onPageSelected(int position) {
                             setPageTabSelected(position == 1);
-                            if (position == 1 && recommendView != null) recommendView.focusFirst();
+                            if (position == 1 && recommendView != null) {
+                                recommendView.focusFirst();
+                                recommendView.loadBackdrop();   // 每次进来换一张背景
+                            }
                         }
                     });
             FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(
@@ -1207,6 +1211,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void installPageTabs() {
+        // 推荐页时把顶部这条（pager 上方）压暗，避免主页画面和背景图出现硬接缝
+        topScrim = new View(this);
+        topScrim.setBackground(new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xF20B1116, 0x000B1116}));
+        topScrim.setVisibility(View.GONE);
+        FrameLayout.LayoutParams scLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, dp(96));
+        scLp.gravity = android.view.Gravity.TOP;
+        root.addView(topScrim, scLp);
+
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(android.view.Gravity.CENTER);
@@ -1383,6 +1398,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** 顶部 tab 选中态跟着页面走。 */
     private void setPageTabSelected(boolean recommend) {
         pageIsRecommend = recommend;
+        if (topScrim != null) topScrim.setVisibility(recommend ? View.VISIBLE : View.GONE);
         if (pageTabHome != null) {
             pageTabHome.setBackground(pageChipBg(!recommend, false));
             ((TextView) pageTabHome).setTextColor(recommend ? 0xFFE6EEF5 : 0xFF0B1116);

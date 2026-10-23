@@ -42,6 +42,7 @@ public class RecommendView extends FrameLayout {
     private int screenW;
     private View firstFocus;
     private android.content.Context ctx;
+    private ImageView bg;
 
     public RecommendView(android.content.Context ctx) {
         super(ctx);
@@ -53,6 +54,19 @@ public class RecommendView extends FrameLayout {
         screenW = getResources().getDisplayMetrics().widthPixels;
         FrameLayout root = new FrameLayout(ctx);
         setBackgroundColor(0xFF0B1116);
+
+        // 背景：和主页同一套 Jellyfin 剧照（模糊 + 渐变压暗），不再是纯黑
+        bg = new ImageView(ctx);
+        bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        bg.setAlpha(0f);
+        root.addView(bg, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        View bgDim = new View(ctx);
+        bgDim.setBackground(new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x660B1116, 0xB30B1116}));
+        root.addView(bgDim, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         ScrollView scroll = new ScrollView(ctx);
         scroll.setFillViewport(true);
@@ -92,6 +106,8 @@ public class RecommendView extends FrameLayout {
 
         addView(root, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        loadBackdrop();
 
 
         new Thread(new Runnable() {
@@ -353,6 +369,43 @@ public class RecommendView extends FrameLayout {
     private void closeWithSlide() {
         if (listener != null) listener.onBack();
     }
+
+    /** 拉一张 Jellyfin 剧照当这一页的背景（模糊 + 淡入），30 秒换一张。 */
+    public void loadBackdrop() {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    java.util.List<JellyfinClient.Item> items = JellyfinClient.backdropPool(200);
+                    if (items == null || items.isEmpty()) return;
+                    JellyfinClient.Item pick = items.get((int) (Math.random() * items.size()));
+                    String imgId = pick.seriesId != null ? pick.seriesId : pick.id;
+                    String url = JellyfinClient.BASE + "/Items/" + imgId
+                            + "/Images/Backdrop/0?maxWidth=1600&quality=90";
+                    android.graphics.Bitmap bm = JellyfinClient.poster(url, 1080);
+                    if (bm == null) return;
+                    try {
+                        int w = bm.getWidth(), h = bm.getHeight();
+                        android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(
+                                bm, Math.max(40, w / 4), Math.max(40, h / 4), true);
+                        android.graphics.Bitmap blur = android.graphics.Bitmap.createScaledBitmap(small, w, h, true);
+                        if (blur != small) small.recycle();
+                        bm = blur;
+                    } catch (Throwable ignored) { }
+                    final android.graphics.Bitmap out = bm;
+                    post(new Runnable() {
+                        @Override public void run() {
+                            if (bg == null) return;
+                            bg.setImageBitmap(out);
+                            bg.animate().alpha(1f).setDuration(600).start();
+                        }
+                    });
+                } catch (Throwable t) {
+                    Log.w(TAG, "backdrop failed " + t);
+                }
+            }
+        }, "cyt-rec-backdrop").start();
+    }
+
 
     private int dp(float v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
