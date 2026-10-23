@@ -1507,7 +1507,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** 切到影视库页。 */
     private void openLibrary() {
         try {
-            startActivity(new android.content.Intent(this, JellyfinActivity.class));
+            if (pager == null) return;
+            pager.setCurrentItem(2, false);
+            setPageTabSelected(2);
+            if (jellyfinView != null) {
+                jellyfinView.setTabsFocused(false);
+                jellyfinView.requestFocus();
+                jellyfinView.focusFirst();
+            }
         } catch (Throwable t) {
             android.util.Log.w("CYT-JF", "openLibrary failed " + t);
         }
