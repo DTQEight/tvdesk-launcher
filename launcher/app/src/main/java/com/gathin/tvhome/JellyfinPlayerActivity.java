@@ -139,7 +139,10 @@ public class JellyfinPlayerActivity extends FragmentActivity
 
         new Thread(new Runnable() {
             @Override public void run() {
-                final String[] t = JellyfinClient.playTarget(seriesId);
+                final String directId = getIntent().getStringExtra("itemId");
+                final String[] t = directId != null && !directId.isEmpty()
+                        ? JellyfinClient.itemTarget(directId)
+                        : JellyfinClient.playTarget(seriesId);
                 final List<String[]> eps = seriesId == null
                         ? new ArrayList<String[]>() : JellyfinClient.episodes(seriesId);
                 runOnUiThread(new Runnable() {

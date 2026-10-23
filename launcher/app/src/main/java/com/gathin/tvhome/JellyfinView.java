@@ -298,7 +298,11 @@ public class JellyfinView extends FrameLayout {
     private void play(JellyfinClient.Card card) {
         try {
             Intent it = new Intent(ctx, JellyfinPlayerActivity.class);
-            it.putExtra("seriesId", card.id);
+            if ("Series".equals(card.type)) {
+                it.putExtra("seriesId", card.id);
+            } else {
+                it.putExtra("itemId", card.id);   // 电影/单集：直接播这一条
+            }
             it.putExtra("title", card.title);
             it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             ctx.startActivity(it);

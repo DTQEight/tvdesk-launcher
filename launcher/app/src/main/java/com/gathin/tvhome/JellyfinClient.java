@@ -221,6 +221,8 @@ public final class JellyfinClient {
     /** 详情页/库页通用卡片：海报 + 标题 + 副标题。 */
     public static final class Card {
         public final String id, title, sub, posterUrl, backdropUrl;
+        /** Movie / Series / Episode，播放时用来区分。 */
+        public String type = "";
         public Card(String id, String title, String sub, String posterUrl, String backdropUrl) {
             this.id = id; this.title = title; this.sub = sub;
             this.posterUrl = posterUrl; this.backdropUrl = backdropUrl;
@@ -272,7 +274,9 @@ public final class JellyfinClient {
             int year = it.optInt("ProductionYear", 0);
             String poster = BASE + "/Items/" + id + "/Images/Primary?maxHeight=720&quality=90"
                     + (tag == null ? "" : "&tag=" + tag);
-            out.add(new Card(id, name, year > 0 ? String.valueOf(year) : "", poster, null));
+            Card card = new Card(id, name, year > 0 ? String.valueOf(year) : "", poster, null);
+            card.type = it.optString("Type", "");
+            out.add(card);
         }
         return out;
     }
@@ -297,7 +301,9 @@ public final class JellyfinClient {
             int year = it.optInt("ProductionYear", 0);
             String poster = BASE + "/Items/" + id + "/Images/Primary?maxHeight=720&quality=90"
                     + (tag == null ? "" : "&tag=" + tag);
-            out.add(new Card(id, name, year > 0 ? String.valueOf(year) : "", poster, null));
+            Card card = new Card(id, name, year > 0 ? String.valueOf(year) : "", poster, null);
+            card.type = it.optString("Type", "");
+            out.add(card);
         }
         return out;
     }
@@ -335,7 +341,9 @@ public final class JellyfinClient {
             JSONObject ud = it.optJSONObject("UserData");
             double pr = ud == null ? 0 : ud.optDouble("PlayedPercentage", 0);
             String sub = pr > 0 ? (Math.round(pr) + "%") : "";
-            out.add(new Card(id, title, sub, poster, null));
+            Card card = new Card(id, title, sub, poster, null);
+            card.type = type;
+            out.add(card);
         }
         return out;
     }
@@ -344,6 +352,14 @@ public final class JellyfinClient {
     public static final String USER_ID = "cebd8acb17734b7190f3e731c0e78301";
 
     /** 第几集开始播：优先「继续观看」，否则第一集。返回 {itemId, 标题}，失败返回 null。 */
+    /** 直接播某个条目（电影 / 单集）：返回 {itemId, label, posMs}。 */
+    public static String[] itemTarget(String itemId) {
+        JSONObject o = getJson(BASE + "/Users/" + USER_ID + "/Items/" + itemId
+                + "?Fields=Name,Type,ParentIndexNumber,IndexNumber,UserData");
+        if (o == null) return null;
+        return pick(o);
+    }
+
     public static String[] playTarget(String seriesId) {
         String[] r = nextUp(seriesId);
         if (r == null) r = firstEpisode(seriesId);
