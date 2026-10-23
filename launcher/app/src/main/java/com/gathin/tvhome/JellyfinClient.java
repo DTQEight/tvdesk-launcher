@@ -251,6 +251,32 @@ public final class JellyfinClient {
     }
 
     /** 某个库最近添加的影片/剧集。 */
+    /** 某个库的全部条目（按名称排序，最多 limit 条）。 */
+    public static java.util.List<Card> libraryItems(String libraryId, int limit) {
+        java.util.List<Card> out = new java.util.ArrayList<>();
+        String url = BASE + "/Items?ParentId=" + libraryId + "&Recursive=true"
+                + "&IncludeItemTypes=Movie,Series&SortBy=SortName&SortOrder=Ascending"
+                + "&Limit=" + limit + "&Fields=ProductionYear,ImageTags";
+        JSONObject o = getJson(url);
+        if (o == null) return out;
+        JSONArray arr = o.optJSONArray("Items");
+        if (arr == null) return out;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject it = arr.optJSONObject(i);
+            if (it == null) continue;
+            String id = it.optString("Id", "");
+            String name = it.optString("Name", "");
+            if (id.isEmpty()) continue;
+            JSONObject tags = it.optJSONObject("ImageTags");
+            String tag = tags == null ? null : tags.optString("Primary", null);
+            int year = it.optInt("ProductionYear", 0);
+            String poster = BASE + "/Items/" + id + "/Images/Primary?maxHeight=720&quality=90"
+                    + (tag == null ? "" : "&tag=" + tag);
+            out.add(new Card(id, name, year > 0 ? String.valueOf(year) : "", poster, null));
+        }
+        return out;
+    }
+
     public static java.util.List<Card> latest(String libraryId, int limit) {
         java.util.List<Card> out = new java.util.ArrayList<>();
         String url = BASE + "/Items?ParentId=" + libraryId + "&Recursive=true"

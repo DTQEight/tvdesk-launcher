@@ -30,6 +30,12 @@ public class JellyfinView extends FrameLayout {
     private LinearLayout content;
     private View firstFocus;
     private ImageView bg;
+    private ScrollView wallScroll;
+    private ScrollView libScroll;
+    private LinearLayout libContent;
+    private TextView libTitle, libBack;
+    private boolean libOpen;
+    private View lastFocused;
     private final java.util.concurrent.ExecutorService loader =
             java.util.concurrent.Executors.newFixedThreadPool(4);
 
@@ -58,6 +64,7 @@ public class JellyfinView extends FrameLayout {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         ScrollView scroll = new ScrollView(ctx);
+        wallScroll = scroll;
         scroll.setVerticalScrollBarEnabled(false);
         content = new LinearLayout(ctx);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -69,6 +76,44 @@ public class JellyfinView extends FrameLayout {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         slp.topMargin = dp(104);
         addView(scroll, slp);
+
+        // 媒体库页（默认隐藏）
+        libScroll = new ScrollView(ctx);
+        libScroll.setVerticalScrollBarEnabled(false);
+        libScroll.setVisibility(View.GONE);
+        libScroll.setBackgroundColor(0xD90B1116);
+        libContent = new LinearLayout(ctx);
+        libContent.setOrientation(LinearLayout.VERTICAL);
+        libContent.setPadding(dp(56), dp(66), dp(56), dp(60));
+        libScroll.addView(libContent, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        FrameLayout.LayoutParams llp2 = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        llp2.topMargin = dp(104);
+        addView(libScroll, llp2);
+
+        libTitle = new TextView(ctx);
+        libTitle.setTextColor(0xFFFFFFFF);
+        libTitle.setTextSize(26);
+        libTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        libTitle.setVisibility(View.GONE);
+        FrameLayout.LayoutParams tlp2 = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp2.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
+        tlp2.leftMargin = dp(56);
+        tlp2.topMargin = dp(120);   // 让开顶部 chrome
+        addView(libTitle, tlp2);
+
+        libBack = chipText("← 我的媒体");
+        libBack.setVisibility(View.GONE);
+        FrameLayout.LayoutParams blp2 = new FrameLayout.LayoutParams(dp(150), dp(40));
+        blp2.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+        blp2.rightMargin = dp(56);
+        blp2.topMargin = dp(120);
+        addView(libBack, blp2);
+        libBack.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { closeLibrary(); }
+        });
 
         new Thread(new Runnable() {
             @Override public void run() {
@@ -138,6 +183,8 @@ public class JellyfinView extends FrameLayout {
         for (View c : cards) inner.addView(c);
         HorizontalScrollView hsv = new HorizontalScrollView(ctx);
         hsv.setHorizontalScrollBarEnabled(false);
+        hsv.setFocusable(false);   // 焦点交给里面的卡片
+        hsv.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         hsv.setClipChildren(false);
         hsv.addView(inner);
         content.addView(hsv, new LinearLayout.LayoutParams(
@@ -184,8 +231,17 @@ public class JellyfinView extends FrameLayout {
         box.setLayoutParams(lp);
         box.setOnFocusChangeListener(focusEffect());
         box.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                android.widget.Toast.makeText(ctx, card.title, android.widget.Toast.LENGTH_SHORT).show();
+            @Override public void onClick(View v) { openLibrary(card); }
+        });
+        box.setOnKeyListener(new View.OnKeyListener() {
+            @Override public boolean onKey(View v, int keyCode, android.view.KeyEvent e) {
+                boolean ok = keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER
+                        || keyCode == android.view.KeyEvent.KEYCODE_ENTER;
+                        if (ok && e.getAction() == android.view.KeyEvent.ACTION_UP) {   // DOWN 被上层吞了，只能收 UP
+                    openLibrary(card);
+                    return true;
+                }
+                return false;
             }
         });
         if (firstFocus == null) firstFocus = box;
@@ -254,6 +310,7 @@ public class JellyfinView extends FrameLayout {
     private View.OnFocusChangeListener focusEffect() {
         return new View.OnFocusChangeListener() {
             @Override public void onFocusChange(View v, boolean has) {
+                if (has) lastFocused = v;
                 v.setBackground(cardBg(has));
                 v.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(120).start();
             }
@@ -316,6 +373,106 @@ public class JellyfinView extends FrameLayout {
         lp.topMargin = dp(24);
         lp.bottomMargin = dp(12);
         content.addView(tv, lp);
+    }
+
+    // ---------------- 媒体库页（点「我的媒体」卡片进入） ----------------
+
+    /** 打开某个库的条目列表。 */
+    private void openLibrary(final JellyfinClient.Card lib) {
+        Log.i(TAG, "openLibrary " + lib.id + " " + lib.title + " libScroll=" + (libScroll != null));
+        if (libScroll == null) return;
+        libOpen = true;
+        libContent.removeAllViews();
+        if (wallScroll != null) wallScroll.setVisibility(View.GONE);
+        libScroll.setVisibility(View.VISIBLE);
+        libScroll.scrollTo(0, 0);
+        if (libTitle != null) { libTitle.setText(lib.title); libTitle.setVisibility(View.VISIBLE); }
+        if (libBack != null) { libBack.setVisibility(View.VISIBLE); libBack.requestFocus(); }
+
+        final TextView loading = new TextView(ctx);
+        loading.setText("正在读取 " + lib.title + " …");
+        loading.setTextColor(0xFF8FA3B0);
+        loading.setTextSize(16);
+        libContent.addView(loading);
+
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final List<JellyfinClient.Card> items = JellyfinClient.libraryItems(lib.id, 300);
+                post(new Runnable() {
+                    @Override public void run() {
+                        libContent.removeView(loading);
+                        renderLibrary(items);
+                    }
+                });
+            }
+        }, "cyt-jf-lib").start();
+    }
+
+    /** 网格铺海报：每行 6 张。 */
+    private void renderLibrary(List<JellyfinClient.Card> items) {
+        if (items.isEmpty()) {
+            TextView empty = new TextView(ctx);
+            empty.setText("（这个库是空的）");
+            empty.setTextColor(0xFF8FA3B0);
+            empty.setTextSize(15);
+            libContent.addView(empty);
+            return;
+        }
+        final int perRow = 6;
+        LinearLayout row = null;
+        for (int i = 0; i < items.size(); i++) {
+            if (i % perRow == 0) {
+                row = new LinearLayout(ctx);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                rlp.topMargin = dp(10);
+                libContent.addView(row, rlp);
+            }
+            View card = posterCard(items.get(i));
+            if (row != null) row.addView(card);
+        }
+        // 焦点放到第一个海报（返回按钮已聚焦，这里不抢）
+    }
+
+    public boolean isLibraryOpen() { return libOpen; }
+
+    public void closeLibrary() {
+        if (!libOpen) return;
+        libOpen = false;
+        if (libScroll != null) libScroll.setVisibility(View.GONE);
+        if (libTitle != null) libTitle.setVisibility(View.GONE);
+        if (libBack != null) libBack.setVisibility(View.GONE);
+        if (wallScroll != null) wallScroll.setVisibility(View.VISIBLE);
+        if (lastFocused != null) lastFocused.requestFocus();
+    }
+
+    /** 简单的圆角按钮（媒体库页返回用）。 */
+    private TextView chipText(String text) {
+        TextView tv = new TextView(ctx);
+        tv.setText(text);
+        tv.setTextSize(14);
+        tv.setGravity(android.view.Gravity.CENTER);
+        tv.setSingleLine(true);
+        tv.setFocusable(true);
+        tv.setFocusableInTouchMode(true);
+        tv.setTextColor(0xFFE6EEF5);
+        GradientDrawable d = new GradientDrawable();
+        d.setCornerRadius(dp(10));
+        d.setColor(0x1FFFFFFF);
+        d.setStroke(dp(1), 0x33FFFFFF);
+        tv.setBackground(d);
+        tv.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override public void onFocusChange(View v, boolean has) {
+                GradientDrawable b = new GradientDrawable();
+                b.setCornerRadius(dp(10));
+                if (has) { b.setColor(0xFFFFFFFF); b.setStroke(dp(3), 0xFF00A4DC); }
+                else { b.setColor(0x1FFFFFFF); b.setStroke(dp(1), 0x33FFFFFF); }
+                v.setBackground(b);
+                ((TextView) v).setTextColor(has ? 0xFF0B1116 : 0xFFE6EEF5);
+            }
+        });
+        return tv;
     }
 
     private int dp(float v) {
