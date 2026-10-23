@@ -1081,18 +1081,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         if (recommendView != null) recommendView.setBackdrop(out);
                         target.animate().alpha(1f).setDuration(900).start();
                         // 旧图淡出后立刻回收，避免每 30 秒泄漏一张 1920x1080 位图
-                        other.animate().alpha(0f).setDuration(900)
-                                .withEndAction(new Runnable() {
-                                    @Override public void run() {
-                                        android.graphics.drawable.Drawable d = other.getDrawable();
-                                        other.setImageDrawable(null);
-                                        if (d instanceof android.graphics.drawable.BitmapDrawable) {
-                                            android.graphics.Bitmap b =
-                                                    ((android.graphics.drawable.BitmapDrawable) d).getBitmap();
-                                            if (b != null && !b.isRecycled()) b.recycle();
-                                        }
-                                    }
-                                }).start();
+                        // 旧图只淡出，不 recycle：同一张图还被推荐页/影视页当背景用，回收会崩
+                        other.animate().alpha(0f).setDuration(900).start();
                     }
                 });
             }
@@ -1477,6 +1467,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         pageIsRecommend = page == 1;
         currentPage = page;
         if (topScrim != null) topScrim.setVisibility(page == 0 ? View.GONE : View.VISIBLE);
+        // 切到推荐/影视页时把主页网格（含底部 dock）藏起来，否则会浮在页面上面
+        if (grid != null) grid.setVisibility(page == 0 ? View.VISIBLE : View.GONE);
+        // 直播预览只在主页显示，别的小页面上一角露出会很怪
+        if (liveSurface != null) liveSurface.setVisibility(page == 0 ? View.VISIBLE : View.INVISIBLE);
         boolean isLib = page == 2;
         if (pageTabHome != null) {
             pageTabHome.setBackground(pageChipBg(page == 0, false));

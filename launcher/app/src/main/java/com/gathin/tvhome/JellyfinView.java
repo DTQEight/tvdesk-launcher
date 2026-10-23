@@ -81,7 +81,7 @@ public class JellyfinView extends FrameLayout {
     // ---------------- 布局 ----------------
 
     private void build() {
-        setBackgroundColor(0xCC0B1116);
+        setBackgroundColor(0xFF0B1116);   // 不透明，否则主页 dock 会透出来
 
         bg = new ImageView(ctx);
         bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
