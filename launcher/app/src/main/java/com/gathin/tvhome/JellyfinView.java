@@ -103,7 +103,7 @@ public class JellyfinView extends FrameLayout {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         View dim = new View(ctx);
         dim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xCC0B1116, 0xE60B1116}));
+                new int[]{0x6E0B1116, 0xC00B1116}));   // 压暗层调淡，背景剧照要透出来
         addView(dim, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -129,7 +129,7 @@ public class JellyfinView extends FrameLayout {
 
         libScroll = new ScrollView(ctx);
         libScroll.setVerticalScrollBarEnabled(false);
-        libScroll.setBackgroundColor(0xFF0B1116);
+        libScroll.setBackgroundColor(0xCC0B1116);   // 半透明，库页也能看到背景剧照
         libScroll.setVisibility(View.GONE);
         libContent = new LinearLayout(ctx);
         libContent.setOrientation(LinearLayout.VERTICAL);
