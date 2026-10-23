@@ -23,12 +23,11 @@ public final class MpClient {
     private static final String TAG = "CYT-MP";
     public static final String BASE = "http://192.168.31.52:3000";
     private static final String KEY = "oasHPCoFmMUARUrkSYlFrw";
-    /** MoviePilot 账号：用来登录换成资源 cookie，再走它自己的图片代理（NAS 常开）。 */
-    private static final String USER = "mcdull";
-    private static final String PASS = "huangyuzhi8";
+    /** 家里路由上的 HTTP 代理（Clash），图片直接走它出网，不依赖 MoviePilot 的 cookie。 */
+    private static final String PROXY_HOST = "192.168.31.1";
+    private static final int PROXY_PORT = 7890;
+
     private static android.content.Context ctx;
-    private static String cookie;
-    private static long cookieAt;
 
     /** 墙上一张卡。 */
     public static final class Item {
@@ -217,37 +216,6 @@ public final class MpClient {
         ctx = c.getApplicationContext();
     }
 
-    /** 登录 MoviePilot，拿资源 cookie（有效期约 30 分钟）。 */
-    private static synchronized boolean ensureLogin() {
-        if (cookie != null && System.currentTimeMillis() - cookieAt < 25 * 60_000L) return true;
-        HttpURLConnection c = null;
-        try {
-            java.net.URL url = new java.net.URL(BASE + "/api/v1/login/access-token");
-            c = (HttpURLConnection) url.openConnection();
-            c.setConnectTimeout(6000);
-            c.setReadTimeout(9000);
-            c.setRequestMethod("POST");
-            c.setDoOutput(true);
-            c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-            java.io.OutputStream os = c.getOutputStream();
-            os.write(("username=" + java.net.URLEncoder.encode(USER, "UTF-8")
-                    + "&password=" + java.net.URLEncoder.encode(PASS, "UTF-8")).getBytes("UTF-8"));
-            os.flush(); os.close();
-            if (c.getResponseCode() != 200) { Log.w(TAG, "login http " + c.getResponseCode()); return false; }
-            String setCookie = c.getHeaderField("Set-Cookie");
-            if (setCookie == null) { Log.w(TAG, "login no cookie"); return false; }
-            int semi = setCookie.indexOf(';');
-            cookie = semi > 0 ? setCookie.substring(0, semi) : setCookie;
-            cookieAt = System.currentTimeMillis();
-            Log.i(TAG, "login ok cookie len=" + cookie.length());
-            return true;
-        } catch (Throwable t) {
-            Log.w(TAG, "login failed " + t);
-            return false;
-        } finally {
-            try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
-        }
-    }
 
     /**
      * 海报：走 MoviePilot 的图片代理（/api/v1/system/img/1），NAS 24 小时开着，
@@ -260,34 +228,42 @@ public final class MpClient {
             Bitmap b = android.graphics.BitmapFactory.decodeFile(cached.getAbsolutePath());
             if (b != null) return b;
         }
-        for (int attempt = 0; attempt < 2; attempt++) {
-            if (!ensureLogin()) return null;
-            HttpURLConnection c = null;
-            java.io.InputStream in = null;
-            try {
-                String proxied = BASE + "/api/v1/system/img/1?imgurl="
-                        + java.net.URLEncoder.encode(url, "UTF-8");
-                c = (HttpURLConnection) new java.net.URL(proxied).openConnection();
-                c.setConnectTimeout(8000);
-                c.setReadTimeout(15000);
-                c.setRequestProperty("Cookie", cookie);
-                int code = c.getResponseCode();
-                if (code == 401) { cookie = null; continue; }          // cookie 过期，重登一次
-                if (code != 200) { Log.w(TAG, "poster http " + code); return null; }
-                in = c.getInputStream();
-                Bitmap b = android.graphics.BitmapFactory.decodeStream(in);
-                if (b != null && cached != null) save(cached, b);
-                return b;
-            } catch (Throwable t) {
-                Log.w(TAG, "poster err " + t);
-                return null;
-            } finally {
-                try { if (in != null) in.close(); } catch (Throwable ignored) { }
-                try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
-            }
-        }
-        return null;
+        // 1) 走代理直连图床（TMDB / 豆瓣）
+        Bitmap b = fetchDirect(url);
+        // 2) 代理不通时，兜底用 MoviePilot 的图片代理
+        // 代理没开就没有海报（片名/评分照常显示）
+        if (b != null && cached != null) save(cached, b);
+        return b;
     }
+
+    /** 通过 192.168.31.1:7890 直连图床，带 UA/Referer（豆瓣反爬必须带）。 */
+    private static Bitmap fetchDirect(String url) {
+        HttpURLConnection c = null;
+        java.io.InputStream in = null;
+        try {
+            java.net.Proxy proxy = new java.net.Proxy(java.net.Proxy.Type.HTTP,
+                    new java.net.InetSocketAddress(PROXY_HOST, PROXY_PORT));
+            c = (HttpURLConnection) new java.net.URL(url).openConnection(proxy);
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(15000);
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36");
+            c.setRequestProperty("Accept", "image/avif,image/webp,image/*,*/*;q=0.8");
+            c.setRequestProperty("Referer", url.contains("doubanio")
+                    ? "https://movie.douban.com/" : "https://www.themoviedb.org/");
+            int code = c.getResponseCode();
+            if (code != 200) { Log.w(TAG, "direct http " + code + " " + url); return null; }
+            in = c.getInputStream();
+            return android.graphics.BitmapFactory.decodeStream(in);
+        } catch (Throwable t) {
+            Log.w(TAG, "direct err " + t);
+            return null;
+        } finally {
+            try { if (in != null) in.close(); } catch (Throwable ignored) { }
+            try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
+        }
+    }
+
 
     private static java.io.File cacheFile(String url) {
         if (ctx == null) return null;
