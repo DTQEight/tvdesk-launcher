@@ -634,7 +634,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
             int leftButton = rtlMenuBar ? R.id.btnSettings : firstButton;
             int rightButton = rtlMenuBar ? firstButton : R.id.btnSettings;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return v.getId() == leftButton;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                // 最左边的胶囊再往左 → 顶部 tab 行，别把光标困在右上角
+                if (v.getId() == leftButton) {
+                    if (pageTabLib != null) { pageTabLib.requestFocus(); return true; }
+                    return true;
+                }
+                return false;   // 交给系统往左走（到更左的胶囊）
+            }
             return keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && v.getId() == rightButton;
         };
         btnInputs.setOnKeyListener(pillKeys);
@@ -1247,6 +1254,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
             // 页面 tab 最后提层，压在 header 之上
             if (pageTabBar != null) pageTabBar.bringToFront();
+            // 顶部一行连成一条链：主页 ↔ 推荐 ↔ 影视 ↔ (胶囊)
+            if (pageTabLib != null && btnWifi != null) {
+                pageTabLib.setNextFocusRightId(btnWifi.getId());
+                btnWifi.setNextFocusLeftId(pageTabLib.getId());
+            }
             if (topScrim != null) topScrim.bringToFront();
         } catch (Throwable t) {
             android.util.Log.e("CYT-MP", "installPager failed " + t);
