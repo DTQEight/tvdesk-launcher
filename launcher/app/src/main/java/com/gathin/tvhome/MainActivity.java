@@ -1887,6 +1887,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        // 返回键：在推荐页回主页；在主页吞掉，别把桌面按退出
+        if (event.getAction() == KeyEvent.ACTION_DOWN
+                && (event.getKeyCode() == KeyEvent.KEYCODE_BACK
+                || event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE)) {
+            if (pager != null && pager.getCurrentItem() == 1) {
+                showHomePage();
+            }
+            return true;
+        }
         // 在推荐页时，别让焦点跑回主页；在主页时也别跑到看不见的推荐页
         if (pager != null && event.getAction() == KeyEvent.ACTION_DOWN) {
             View cur = getCurrentFocus();
