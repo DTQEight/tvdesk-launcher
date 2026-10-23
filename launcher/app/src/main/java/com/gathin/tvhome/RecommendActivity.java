@@ -25,7 +25,7 @@ import java.util.List;
 
 /**
  * 推荐页：从主页往右翻过来的一页。
- * 数据来自 MoviePilot（见 MpClient），点击只弹详情，不接播放。
+ * 推荐流来自 MoviePilot，海报/简介来自 2bt0 资源库（见 LibClient）；点击只弹详情，不接播放。
  */
 public class RecommendActivity extends Activity {
 
@@ -63,7 +63,7 @@ public class RecommendActivity extends Activity {
         content.addView(head);
 
         TextView sub = new TextView(this);
-        sub.setText("来自 MoviePilot · 右滑进来，左滑回主页");
+        sub.setText("推荐流 MoviePilot · 海报 2bt0 资源库 · 右滑进来，左滑回主页");
         sub.setTextColor(0xFF8FA3B0);
         sub.setTextSize(14);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
@@ -241,18 +241,32 @@ public class RecommendActivity extends Activity {
         });
     }
 
-    private void showDetail(MpClient.Item item) {
-        StringBuilder sb = new StringBuilder();
-        if (item.year != null && !item.year.isEmpty()) sb.append(item.year).append("  ");
-        if (item.type != null && !item.type.isEmpty()) sb.append(item.type).append("  ");
-        if (item.rating > 0) sb.append("★ ").append(String.format("%.1f", item.rating));
-        sb.append("\n\n");
-        sb.append(item.overview == null || item.overview.isEmpty() ? "（暂无简介）" : item.overview);
-        new AlertDialog.Builder(this)
+    private void showDetail(final MpClient.Item item) {
+        StringBuilder head = new StringBuilder();
+        if (item.year != null && !item.year.isEmpty()) head.append(item.year).append("  ");
+        if (item.type != null && !item.type.isEmpty()) head.append(item.type).append("  ");
+        if (item.rating > 0) head.append("★ ").append(String.format("%.1f", item.rating));
+        if (item.versions > 0) head.append("  ").append(item.versions).append(" 个版本");
+        String fallback = head + "\n\n" + (item.overview == null || item.overview.isEmpty()
+                ? "（暂无简介）" : item.overview);
+        if (item.libId == null || item.libId.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle(item.title).setMessage(fallback)
+                    .setPositiveButton("关闭", null).show();
+            return;
+        }
+        final AlertDialog dlg = new AlertDialog.Builder(this)
                 .setTitle(item.title)
-                .setMessage(sb.toString())
+                .setMessage(fallback + "\n\n正在读取资源库详情…")
                 .setPositiveButton("关闭", null)
                 .show();
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final String text = LibClient.detail(item.libId);
+                runOnUiThread(new Runnable() {
+                    @Override public void run() { if (text != null) dlg.setMessage(text); }
+                });
+            }
+        }, "cyt-lib-detail").start();
     }
 
     private GradientDrawable cardBg(boolean focused) {

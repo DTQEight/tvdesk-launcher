@@ -606,6 +606,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 // Back to the dock tile Up came from, not wherever the focus finder lands.
                 focusTile(lastFocused % COLUMNS);
+                // Dock 为空（模拟器/新装机）时退到顶部 tab 行，别把焦点困在胶囊里
+                handler.postDelayed(new Runnable() { @Override public void run() {
+                    View f = getCurrentFocus();
+                    if (f != null && (f.getId() == btnSettings.getId() || f.getId() == btnWifi.getId())) {
+                        if (tabsLeft[0] != null) tabsLeft[0].requestFocus();
+                    }
+                } }, 60L);
                 return true;
             }
             int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
