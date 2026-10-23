@@ -92,6 +92,7 @@ import java.util.Set;
  * tvOS style home: black, a pinned dock row, an app grid, and one glass highlight that springs between tiles.
  */
 public class MainActivity extends Activity implements AppAdapter.TileListener {
+    private View pageTabHome, pageTabRec;
 
     private static final int LAUNCHER_SETTINGS_REQUEST = 42;
     /** Sent by QuickSettingsActivity: open Launcher settings from here so Home rebuilds when they close. */
@@ -602,7 +603,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         boolean rtlMenuBar = getResources().getBoolean(R.bool.rtl_menu_bar);
         View.OnKeyListener pillKeys = (v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                if (pageTabHome != null) { pageTabHome.requestFocus(); return true; }
+                return true;
+            }
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 // Back to the dock tile Up came from, not wherever the focus finder lands.
                 focusTile(lastFocused % COLUMNS);
@@ -1135,6 +1139,67 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
 
     /** 右上方两个 tab：最近观看（带集数/进度副标题）+ 待定。 */
+    /** 顶部居中的页面 tab：主页 / 推荐。 */
+    private void installPageTabs() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(android.view.Gravity.CENTER);
+
+        final View home = pageChip("主页", true);
+        final View rec = pageChip("推荐 ›", false);
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(dp(96), dp(40));
+        lp1.rightMargin = dp(10);
+        bar.addView(home, lp1);
+        bar.addView(rec, new LinearLayout.LayoutParams(dp(110), dp(40)));
+
+        FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+        blp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
+        blp.topMargin = dp(48);
+        root.addView(bar, blp);
+
+        pageTabHome = home;
+        pageTabRec = rec;
+        home.setNextFocusRightId(rec.getId());
+        rec.setNextFocusLeftId(home.getId());
+        if (tabsLeft[0] != null) {
+            home.setNextFocusDownId(tabsLeft[0].getId());
+            rec.setNextFocusDownId(tabsRight[1].getId());
+        }
+        home.setOnClickListener(v -> { });
+        rec.setOnClickListener(v -> openRecommend());
+    }
+
+    /** 一个页面 tab 芯片。 */
+    private View pageChip(String text, boolean selected) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(14);
+        tv.setGravity(android.view.Gravity.CENTER);
+        tv.setSingleLine(true);
+        tv.setId(android.view.View.generateViewId());
+        tv.setFocusable(true);
+        tv.setFocusableInTouchMode(true);
+        final boolean[] sel = { selected };
+        tv.setBackground(pageChipBg(sel[0], false));
+        tv.setTextColor(sel[0] ? 0xFF0B1116 : 0xFFE6EEF5);
+        tv.setOnFocusChangeListener((v, has) -> {
+            v.setBackground(pageChipBg(sel[0], has));
+            ((TextView) v).setTextColor(has || sel[0] ? 0xFF0B1116 : 0xFFE6EEF5);
+            v.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(120).start();
+        });
+        return tv;
+    }
+
+    private android.graphics.drawable.GradientDrawable pageChipBg(boolean selected, boolean focused) {
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setCornerRadius(dp(20));
+        if (focused) { d.setColor(0xFFFFFFFF); d.setStroke(dp(3), 0xFF00A4DC); }
+        else if (selected) { d.setColor(0xFFE6EEF5); d.setStroke(dp(1), 0x33000000); }
+        else { d.setColor(0x1F101820); d.setStroke(dp(1), 0x2AFFFFFF); }
+        return d;
+    }
+
     private void installTopTabs() {
         try {
             int areaW = getResources().getDisplayMetrics().widthPixels - dp(640) - dp(60);
@@ -1175,6 +1240,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             r2.setNextFocusLeftId(r1.getId());
             r1.setNextFocusLeftId(t2.getId());
             t2.setNextFocusLeftId(t1.getId());
+            installPageTabs();
         } catch (Throwable t) {
             android.util.Log.e("CYT-TAB", "installTopTabs failed " + t);
         }

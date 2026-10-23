@@ -54,6 +54,60 @@ public class RecommendActivity extends Activity {
         root.addView(scroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        // 顶部页面 tab：主页 / 推荐（当前）
+        LinearLayout pageBar = new LinearLayout(this);
+        pageBar.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams pblp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pblp.bottomMargin = dp(18);
+        content.addView(pageBar, pblp);
+
+        TextView tabHome = new TextView(this);
+        tabHome.setText("主页");
+        tabHome.setTextSize(14);
+        tabHome.setGravity(Gravity.CENTER);
+        tabHome.setFocusable(true);
+        tabHome.setFocusableInTouchMode(true);
+        tabHome.setTextColor(0xFFE6EEF5);
+        GradientDrawable homeBg = new GradientDrawable();
+        homeBg.setCornerRadius(dp(20));
+        homeBg.setColor(0x1F101820);
+        homeBg.setStroke(dp(1), 0x2AFFFFFF);
+        tabHome.setBackground(homeBg);
+        LinearLayout.LayoutParams thlp = new LinearLayout.LayoutParams(dp(96), dp(40));
+        thlp.rightMargin = dp(10);
+        pageBar.addView(tabHome, thlp);
+        tabHome.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { closeWithSlide(); }
+        });
+
+        TextView tabRec = new TextView(this);
+        tabRec.setText("推荐");
+        tabRec.setTextSize(14);
+        tabRec.setGravity(Gravity.CENTER);
+        tabRec.setFocusable(true);
+        tabRec.setFocusableInTouchMode(true);
+        tabRec.setTextColor(0xFF0B1116);
+        GradientDrawable recBg = new GradientDrawable();
+        recBg.setCornerRadius(dp(20));
+        recBg.setColor(0xFFE6EEF5);
+        recBg.setStroke(dp(1), 0x33000000);
+        tabRec.setBackground(recBg);
+        pageBar.addView(tabRec, new LinearLayout.LayoutParams(dp(96), dp(40)));
+
+        tabHome.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override public void onFocusChange(View v, boolean has) {
+                GradientDrawable d = new GradientDrawable();
+                d.setCornerRadius(dp(20));
+                if (has) { d.setColor(0xFFFFFFFF); d.setStroke(dp(3), 0xFF00A4DC); }
+                else { d.setColor(0x1F101820); d.setStroke(dp(1), 0x2AFFFFFF); }
+                v.setBackground(d);
+                ((TextView) v).setTextColor(has ? 0xFF0B1116 : 0xFFE6EEF5);
+            }
+        });
+        tabHome.setNextFocusRightId(tabRec.getId());
+        tabRec.setNextFocusLeftId(tabHome.getId());
+
         // 顶部标题
         TextView head = new TextView(this);
         head.setText("推荐");
