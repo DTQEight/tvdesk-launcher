@@ -73,30 +73,13 @@ public class RecommendView extends FrameLayout {
         scroll.setVerticalScrollBarEnabled(false);
         content = new LinearLayout(ctx);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(56), dp(44), dp(56), dp(60));
+        content.setPadding(dp(56), dp(104), dp(56), dp(60));   // 顶部让开时钟/胶囊/页面 tab
         scroll.addView(content, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         // 页面 tab 由 MainActivity 统一提供（pager 外面），这里不再画
 
-        // 顶部标题
-        TextView head = new TextView(ctx);
-        head.setText("推荐");
-        head.setTextColor(0xFFFFFFFF);
-        head.setTextSize(34);
-        head.setTypeface(null, android.graphics.Typeface.BOLD);
-        content.addView(head);
-
-        TextView sub = new TextView(ctx);
-        sub.setText("推荐流 MoviePilot · 海报 2bt0 资源库 · 右滑进来，左滑回主页");
-        sub.setTextColor(0xFF8FA3B0);
-        sub.setTextSize(14);
-        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        subLp.topMargin = dp(6);
-        subLp.bottomMargin = dp(24);
-        content.addView(sub, subLp);
 
         final TextView loading = new TextView(ctx);
         loading.setText("正在载入海报…");
@@ -371,7 +354,15 @@ public class RecommendView extends FrameLayout {
     }
 
     /** 拉一张 Jellyfin 剧照当这一页的背景（模糊 + 淡入），30 秒换一张。 */
+    /** 用主页当前那张背景（保证两页背景一致，不割裂）。 */
+    public void setBackdrop(android.graphics.Bitmap bmp) {
+        if (bmp == null || bg == null) return;
+        bg.setImageBitmap(bmp);
+        bg.animate().alpha(1f).setDuration(400).start();
+    }
+
     public void loadBackdrop() {
+        if (bg != null && bg.getDrawable() != null) return;
         new Thread(new Runnable() {
             @Override public void run() {
                 try {

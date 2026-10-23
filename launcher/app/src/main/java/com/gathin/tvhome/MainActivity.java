@@ -95,6 +95,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private View pageTabHome, pageTabRec;
     private boolean pageIsRecommend;
     private View topScrim;
+    private View pageTabBar;
     private androidx.viewpager2.widget.ViewPager2 pager;
     private RecommendView recommendView;
 
@@ -197,6 +198,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private LinearLayout tabRecent;
     private TextView weatherView;
     private ImageView bgA, bgB;
+    private android.graphics.Bitmap currentBackdrop;
     private boolean bgFlip;
     private java.util.List<String> backdrops = new java.util.ArrayList<>();
     private int backdropPos;
@@ -1071,6 +1073,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 runOnUiThread(new Runnable() {
                     @Override public void run() {
                         target.setImageBitmap(out);
+                        currentBackdrop = out;
+                        if (recommendView != null) recommendView.setBackdrop(out);
                         target.animate().alpha(1f).setDuration(900).start();
                         // 旧图淡出后立刻回收，避免每 30 秒泄漏一张 1920x1080 位图
                         other.animate().alpha(0f).setDuration(900)
@@ -1182,6 +1186,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     recommendView.setLayoutParams(new android.view.ViewGroup.LayoutParams(
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+                    if (currentBackdrop != null) recommendView.setBackdrop(currentBackdrop);
                     recommendView.setListener(new RecommendView.Listener() {
                         @Override public void onBack() { showHomePage(); }
                     });
@@ -1197,26 +1202,39 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                             setPageTabSelected(position == 1);
                             if (position == 1 && recommendView != null) {
                                 recommendView.focusFirst();
-                                recommendView.loadBackdrop();   // 每次进来换一张背景
+                                if (currentBackdrop != null) recommendView.setBackdrop(currentBackdrop);
                             }
                         }
                     });
             FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
-            plp.topMargin = dp(92);   // 顶部时钟/胶囊/页面 tab 保持可见
+            plp.topMargin = 0;   // 全屏铺背景，顶部 chrome 用 bringToFront 压上来
             root.addView(pager, plp);
+            // 顶部 chrome（时钟/胶囊/页面 tab）压到 pager 之上，背景才能全屏 = 无接缝
+            // 时钟和胶囊在同一个 header 容器里，要整块提到 pager 之上
+            View clockView = findViewById(R.id.clock);
+            if (clockView != null) {
+                View head = clockView;
+                while (head.getParent() != null && head.getParent() != root) {
+                    head = (View) head.getParent();
+                }
+                if (head.getParent() == root) head.bringToFront();
+            }
+            // 页面 tab 最后提层，压在 header 之上
+            if (pageTabBar != null) pageTabBar.bringToFront();
+            if (topScrim != null) topScrim.bringToFront();
         } catch (Throwable t) {
             android.util.Log.e("CYT-MP", "installPager failed " + t);
         }
     }
 
+    /** 顶部居中的页面 tab：主页 / 推荐。 */
     private void installPageTabs() {
-        // 推荐页时把顶部这条（pager 上方）压暗，避免主页画面和背景图出现硬接缝
         topScrim = new View(this);
         topScrim.setBackground(new android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0xF20B1116, 0x000B1116}));
-        topScrim.setVisibility(View.GONE);
+        topScrim.setVisibility(View.GONE);   // 背景全屏后不再需要
         FrameLayout.LayoutParams scLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, dp(96));
         scLp.gravity = android.view.Gravity.TOP;
@@ -1238,6 +1256,26 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         blp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
         blp.topMargin = dp(48);
         root.addView(bar, blp);
+        pageTabBar = bar;
+
+        // 和右上角胶囊（WIFI/设置）垂直居中对齐：等布局完成再算，避免高度为 0 时算错
+        final FrameLayout.LayoutParams alignLp = blp;
+        final View anchor = findViewById(R.id.btnSettings);
+        bar.getViewTreeObserver().addOnGlobalLayoutListener(
+                new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                    @Override public void onGlobalLayout() {
+                        int h = bar.getHeight();
+                        if (anchor == null || h == 0) return;
+                        int[] a = new int[2];
+                        int[] b = new int[2];
+                        anchor.getLocationInWindow(a);
+                        root.getLocationInWindow(b);
+                        int anchorCenter = a[1] - b[1] + anchor.getHeight() / 2;
+                        alignLp.topMargin = Math.max(0, anchorCenter - h / 2);
+                        bar.setLayoutParams(alignLp);
+                        bar.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                    }
+                });
 
         pageTabHome = home;
         pageTabRec = rec;
