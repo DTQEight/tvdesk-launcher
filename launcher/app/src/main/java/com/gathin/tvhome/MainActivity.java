@@ -130,6 +130,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             try {
                 if (livePreview == null || liveSurface == null) return;
                 if (!TVDeskPrefs.preview(MainActivity.this)) return;
+                if (pager != null && pager.getCurrentItem() == 1) return;   // 推荐页不占用解码器
                 if (!livePreview.isPlaying() && liveSurface.getHolder().getSurface() != null
                         && liveSurface.getHolder().getSurface().isValid()) {
                     android.util.Log.w("CYT-LIVE", "preview stalled, restarting");
@@ -1200,6 +1201,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     new androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
                         @Override public void onPageSelected(int position) {
                             setPageTabSelected(position == 1);
+                            // 切到推荐页：停掉直播预览，省解码器和流量
+                            if (position == 1) {
+                                if (livePreview != null) livePreview.stop();
+                            } else {
+                                // 回主页：重新起预览
+                                if (TVDeskPrefs.preview(MainActivity.this) && liveSurface != null
+                                        && liveSurface.getHolder().getSurface() != null
+                                        && liveSurface.getHolder().getSurface().isValid()) {
+                                    startLive(liveSurface.getHolder());
+                                }
+                            }
                             if (position == 1 && recommendView != null) {
                                 recommendView.focusFirst();
                                 if (currentBackdrop != null) recommendView.setBackdrop(currentBackdrop);
