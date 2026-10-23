@@ -441,9 +441,46 @@ public final class JellyfinClient {
         return new String[]{id, label, String.valueOf(posMs)};
     }
 
-    /** 原片直连（static=true，不转码）。 */
+    /** 音轨是 EAC3/AC3/DTS 这类电视放不出声的编码时，改走 HLS 转码（AAC 双声道）。 */
+    private static final java.util.Map<String, Boolean> transcodeCache = new java.util.HashMap<>();
+
+    /** 原片直连（static=true）；音轨不支持就退回 HLS 转码。 */
     public static String streamUrl(String itemId) {
+        if (needsAudioTranscode(itemId)) return hlsUrl(itemId);
         return BASE + "/Videos/" + itemId + "/stream?static=true&MediaSourceId=" + itemId;
+    }
+
+    private static synchronized boolean needsAudioTranscode(String itemId) {
+        Boolean cached = transcodeCache.get(itemId);
+        if (cached != null) return cached;
+        boolean need = false;
+        try {
+            JSONObject o = getJson(BASE + "/Users/" + USER_ID + "/Items/" + itemId
+                    + "?Fields=MediaStreams");
+            JSONArray arr = o == null ? null : o.optJSONArray("MediaStreams");
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject s = arr.optJSONObject(i);
+                    if (s == null || !"Audio".equals(s.optString("Type"))) continue;
+                    String codec = s.optString("Codec", "").toLowerCase();
+                    if (codec.equals("eac3") || codec.equals("ac3") || codec.equals("dts")
+                            || codec.equals("truehd") || codec.startsWith("dts")) need = true;
+                }
+            }
+        } catch (Throwable ignored) { }
+        transcodeCache.put(itemId, need);
+        android.util.Log.i("CYT-VOD", "audio transcode=" + need + " for " + itemId);
+        return need;
+    }
+
+    private static String hlsUrl(String itemId) {
+        return BASE + "/Videos/" + itemId + "/master.m3u8"
+                + "?MediaSourceId=" + itemId
+                + "&DeviceId=TVDesk&ApiKey=" + TOKEN
+                + "&AudioCodec=aac&AudioBitrate=192000&MaxAudioChannels=2"
+                + "&VideoCodec=h264&MaxWidth=1920&MaxHeight=1080&VideoBitrate=12000000"
+                + "&TranscodingContainer=ts&TranscodingProtocol=hls&SegmentContainer=ts"
+                + "&MinSegments=1&BreakOnNonKeyFrames=True";
     }
 
     /** 给 ijkplayer 的鉴权头。 */

@@ -51,6 +51,8 @@ public class JellyfinView extends FrameLayout {
     private TextView detailBack;
 
     private boolean libOpen;
+    /** 顶部 tab 接管焦点时，影视页不再吃按键、也不画选中框。 */
+    private boolean tabsFocused;
     private boolean detailOpen;
 
     private final List<JellyfinClient.Card> views = new ArrayList<>();
@@ -399,14 +401,14 @@ public class JellyfinView extends FrameLayout {
         for (int r = 0; r < rowViews.size(); r++) {
             List<View> row = rowViews.get(r);
             for (int c = 0; c < row.size(); c++) {
-                boolean sel = !libOpen && mode == MODE_CONTENT && r == rowSel && c == colSel;
+                boolean sel = !tabsFocused && !libOpen && mode == MODE_CONTENT && r == rowSel && c == colSel;
                 row.get(c).setBackground(cardBg(sel));
             }
         }
         for (int r = 0; r < libViews.size(); r++) {
             List<View> row = libViews.get(r);
             for (int c = 0; c < row.size(); c++) {
-                boolean sel = libOpen && mode == MODE_CONTENT && r == libRowSel && c == libColSel;
+                boolean sel = !tabsFocused && libOpen && mode == MODE_CONTENT && r == libRowSel && c == libColSel;
                 row.get(c).setBackground(cardBg(sel));
             }
         }
@@ -441,7 +443,13 @@ public class JellyfinView extends FrameLayout {
 
     // ---------------- 按键 ----------------
 
+    public void setTabsFocused(boolean on) {
+        tabsFocused = on;
+        highlight();
+    }
+
     public boolean handleKey(int keyCode) {
+        if (tabsFocused) return false;
         if (keyCode != android.view.KeyEvent.KEYCODE_DPAD_LEFT
                 && keyCode != android.view.KeyEvent.KEYCODE_DPAD_RIGHT
                 && keyCode != android.view.KeyEvent.KEYCODE_DPAD_UP

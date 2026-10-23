@@ -1975,12 +1975,25 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return true;
         }
         // 影视页顶到最上面再按 ↑：把焦点还给顶部 tab（否则会被影视页一直吞键）
+        // 影视页顶到最上面再按 ↑：直接回主页（主页上焦点导航是原生的，顶部 tab 自然能到）
         if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
                 && event.getAction() == KeyEvent.ACTION_DOWN
                 && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
                 && jellyfinView.isAtTop()) {
-            if (pageTabLib != null) pageTabLib.requestFocus();
+            jellyfinView.setTabsFocused(false);
+            showHomePage();
             return true;
+        }
+        // 在 tab 上按 ↓：回到影视页
+        if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN) {
+            View cf = getCurrentFocus();
+            if (cf == pageTabHome || cf == pageTabRec || cf == pageTabLib) {
+                jellyfinView.setTabsFocused(false);
+                jellyfinView.focusFirst();
+                return true;
+            }
         }        // 影视页：方向键/OK 全部交给页面自己处理，必须先于焦点守卫，否则按键会被吞掉
         if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
                 && event.getAction() == KeyEvent.ACTION_DOWN
@@ -1994,7 +2007,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (page == 1) {
                 View pageView = pageViewOf(cur);
                 if (pageView == null) pageView = page == 1 ? recommendView : jellyfinView;
-                if (cur == null || !isInside(cur, pageView)) {
+                boolean onTab = (cur == pageTabHome || cur == pageTabRec || cur == pageTabLib);
+                if (!onTab && (cur == null || !isInside(cur, pageView))) {
                     if (page == 1 && recommendView != null) recommendView.focusFirst();
                     else if (page == 2 && jellyfinView != null) jellyfinView.focusFirst();
                     return true;
