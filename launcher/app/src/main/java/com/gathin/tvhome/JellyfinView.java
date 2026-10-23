@@ -771,6 +771,10 @@ public class JellyfinView extends FrameLayout {
         }
     }
 
+    /** 选择是否已顶到最上面（左栏第一项、不是详情/库页）。 */
+    public boolean isAtTop() {
+        return !detailOpen && !libOpen && mode == MODE_RAIL && railSel == 0;
+    }
     public boolean isDetailOpen() { return detailOpen; }
 
     public void closeDetail() {

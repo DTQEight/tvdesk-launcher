@@ -127,13 +127,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** 屏保/空闲时停掉预览（方法体内可以引用后面声明的字段）。 */
 
+    private boolean activityResumed;
     /** 预览黑屏看护：8 秒还没在播就重启一次预览。 */
     private final Runnable previewWatchdog = new Runnable() {
         @Override public void run() {
             try {
                 if (livePreview == null || liveSurface == null) return;
                 if (!TVDeskPrefs.preview(MainActivity.this)) return;
-                if (pager != null && pager.getCurrentItem() == 1) return;   // 推荐页不占用解码器
+                if (!activityResumed) return;                                  // 播放器在前台时别抢解码器
+                if (pager != null && pager.getCurrentItem() != 0) return;      // 只在主页跑预览
                 if (!livePreview.isPlaying() && liveSurface.getHolder().getSurface() != null
                         && liveSurface.getHolder().getSurface().isValid()) {
                     android.util.Log.w("CYT-LIVE", "preview stalled, restarting");
@@ -732,6 +734,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
+        activityResumed = true;
         // 回桌面后延迟再释放一次信号源（HDMI 的黑色视频面偶尔会盖在桌面上）
         handler.postDelayed(new Runnable() {
             @Override public void run() { try { SourceSwitcher.releaseSource(MainActivity.this); } catch (Throwable ignored) { } }
@@ -889,6 +892,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onPause();
         root.removeCallbacks(showIdleClock);
         endReorder();   // Home or another app while reordering keeps the order so far
+        activityResumed = false;
         wallpaperPlayer.stop();
         if (livePreview != null) livePreview.stop();   // 释放直播预览解码器
         stopAmbientAnimation();
@@ -1471,6 +1475,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (grid != null) grid.setVisibility(page == 0 ? View.VISIBLE : View.GONE);
         // 直播预览只在主页显示，别的小页面上一角露出会很怪
         if (liveSurface != null) liveSurface.setVisibility(page == 0 ? View.VISIBLE : View.INVISIBLE);
+        if (page != 0 && livePreview != null) livePreview.stop();   // 让出硬件解码器
         boolean isLib = page == 2;
         if (pageTabHome != null) {
             pageTabHome.setBackground(pageChipBg(page == 0, false));
@@ -1969,7 +1974,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
             return true;
         }
-        // 影视页：方向键/OK 全部交给页面自己处理，必须先于焦点守卫，否则按键会被吞掉
+        // 影视页顶到最上面再按 ↑：把焦点还给顶部 tab（否则会被影视页一直吞键）
+        if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
+                && jellyfinView.isAtTop()) {
+            if (pageTabLib != null) pageTabLib.requestFocus();
+            return true;
+        }        // 影视页：方向键/OK 全部交给页面自己处理，必须先于焦点守卫，否则按键会被吞掉
         if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
                 && event.getAction() == KeyEvent.ACTION_DOWN
                 && jellyfinView.handleKey(event.getKeyCode())) {

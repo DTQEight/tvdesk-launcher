@@ -181,6 +181,11 @@ public class JellyfinPlayerActivity extends FragmentActivity
         try {
             player.reset();
             player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1L);
+            player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-hevc", 1L);   // H.265 也走硬解
+            player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 1L);
+            player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1L);         // 卡了先丢帧保同步
+            player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 15 * 1024 * 1024L);
+            player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1L);
             player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 2000000L);
             player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 524288L);
             player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "subtitle", 1L);
