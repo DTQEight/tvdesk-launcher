@@ -1360,7 +1360,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
         d.setCornerRadius(dp(20));
         if (focused) { d.setColor(0xFFFFFFFF); d.setStroke(dp(3), 0xFF00A4DC); }
-        else if (selected) { d.setColor(0xFFE6EEF5); d.setStroke(dp(1), 0x33000000); }
+        else if (selected) { d.setColor(0x33FFFFFF); d.setStroke(dp(1), 0x66FFFFFF); }   // 当前页：低调高亮，不做成"光标"
         else { d.setColor(0x1F101820); d.setStroke(dp(1), 0x2AFFFFFF); }
         return d;
     }
