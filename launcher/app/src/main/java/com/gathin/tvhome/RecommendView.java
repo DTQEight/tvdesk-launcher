@@ -27,7 +27,13 @@ import java.util.List;
  * 推荐页：从主页往右翻过来的一页。
  * 推荐流来自 MoviePilot，海报/简介来自 2bt0 资源库（见 LibClient）；点击只弹详情，不接播放。
  */
-public class RecommendActivity extends Activity {
+public class RecommendView extends FrameLayout {
+
+    /** 左边缘再按左（或顶部 tab 点主页）时回调，由宿主决定怎么退。 */
+    public interface Listener { void onBack(); }
+
+    private Listener listener;
+    public void setListener(Listener l) { listener = l; }
 
     private static final String TAG = "CYT-MP";
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -35,88 +41,40 @@ public class RecommendActivity extends Activity {
     private LinearLayout content;
     private int screenW;
     private View firstFocus;
+    private android.content.Context ctx;
 
-    @Override protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+    public RecommendView(android.content.Context ctx) {
+        super(ctx);
+        this.ctx = ctx;
+        build();
 
+    }
+    private void build() {
         screenW = getResources().getDisplayMetrics().widthPixels;
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(0xFF0B1116);
+        FrameLayout root = new FrameLayout(ctx);
+        setBackgroundColor(0xFF0B1116);
 
-        ScrollView scroll = new ScrollView(this);
+        ScrollView scroll = new ScrollView(ctx);
         scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
-        content = new LinearLayout(this);
+        content = new LinearLayout(ctx);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(56), dp(44), dp(56), dp(60));
         scroll.addView(content, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        // 顶部页面 tab：主页 / 推荐（当前）
-        LinearLayout pageBar = new LinearLayout(this);
-        pageBar.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams pblp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        pblp.bottomMargin = dp(18);
-        content.addView(pageBar, pblp);
-
-        TextView tabHome = new TextView(this);
-        tabHome.setText("主页");
-        tabHome.setTextSize(14);
-        tabHome.setGravity(Gravity.CENTER);
-        tabHome.setFocusable(true);
-        tabHome.setFocusableInTouchMode(true);
-        tabHome.setTextColor(0xFFE6EEF5);
-        GradientDrawable homeBg = new GradientDrawable();
-        homeBg.setCornerRadius(dp(20));
-        homeBg.setColor(0x1F101820);
-        homeBg.setStroke(dp(1), 0x2AFFFFFF);
-        tabHome.setBackground(homeBg);
-        LinearLayout.LayoutParams thlp = new LinearLayout.LayoutParams(dp(96), dp(40));
-        thlp.rightMargin = dp(10);
-        pageBar.addView(tabHome, thlp);
-        tabHome.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { closeWithSlide(); }
-        });
-
-        TextView tabRec = new TextView(this);
-        tabRec.setText("推荐");
-        tabRec.setTextSize(14);
-        tabRec.setGravity(Gravity.CENTER);
-        tabRec.setFocusable(true);
-        tabRec.setFocusableInTouchMode(true);
-        tabRec.setTextColor(0xFF0B1116);
-        GradientDrawable recBg = new GradientDrawable();
-        recBg.setCornerRadius(dp(20));
-        recBg.setColor(0xFFE6EEF5);
-        recBg.setStroke(dp(1), 0x33000000);
-        tabRec.setBackground(recBg);
-        pageBar.addView(tabRec, new LinearLayout.LayoutParams(dp(96), dp(40)));
-
-        tabHome.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override public void onFocusChange(View v, boolean has) {
-                GradientDrawable d = new GradientDrawable();
-                d.setCornerRadius(dp(20));
-                if (has) { d.setColor(0xFFFFFFFF); d.setStroke(dp(3), 0xFF00A4DC); }
-                else { d.setColor(0x1F101820); d.setStroke(dp(1), 0x2AFFFFFF); }
-                v.setBackground(d);
-                ((TextView) v).setTextColor(has ? 0xFF0B1116 : 0xFFE6EEF5);
-            }
-        });
-        tabHome.setNextFocusRightId(tabRec.getId());
-        tabRec.setNextFocusLeftId(tabHome.getId());
+        // 页面 tab 由 MainActivity 统一提供（pager 外面），这里不再画
 
         // 顶部标题
-        TextView head = new TextView(this);
+        TextView head = new TextView(ctx);
         head.setText("推荐");
         head.setTextColor(0xFFFFFFFF);
         head.setTextSize(34);
         head.setTypeface(null, android.graphics.Typeface.BOLD);
         content.addView(head);
 
-        TextView sub = new TextView(this);
+        TextView sub = new TextView(ctx);
         sub.setText("推荐流 MoviePilot · 海报 2bt0 资源库 · 右滑进来，左滑回主页");
         sub.setTextColor(0xFF8FA3B0);
         sub.setTextSize(14);
@@ -126,22 +84,20 @@ public class RecommendActivity extends Activity {
         subLp.bottomMargin = dp(24);
         content.addView(sub, subLp);
 
-        final TextView loading = new TextView(this);
+        final TextView loading = new TextView(ctx);
         loading.setText("正在载入海报…");
         loading.setTextColor(0xFF8FA3B0);
         loading.setTextSize(16);
         content.addView(loading);
 
-        setContentView(root);
+        addView(root, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // 从右侧滑入
-        root.setTranslationX(screenW);
-        root.animate().translationX(0).setDuration(260).start();
 
         new Thread(new Runnable() {
             @Override public void run() {
                 final List<MpClient.Section> wall = MpClient.wall();
-                runOnUiThread(new Runnable() {
+                post(new Runnable() {
                     @Override public void run() {
                         content.removeView(loading);
                         buildSections(wall);
@@ -155,7 +111,7 @@ public class RecommendActivity extends Activity {
     private void buildSections(List<MpClient.Section> wall) {
         for (MpClient.Section sec : wall) {
             if (sec.items.isEmpty()) continue;
-            TextView title = new TextView(this);
+            TextView title = new TextView(ctx);
             title.setText(sec.title);
             title.setTextColor(0xFFFFFFFF);
             title.setTextSize(20);
@@ -166,9 +122,9 @@ public class RecommendActivity extends Activity {
             tlp.bottomMargin = dp(12);
             content.addView(title, tlp);
 
-            HorizontalScrollView hsv = new HorizontalScrollView(this);
+            HorizontalScrollView hsv = new HorizontalScrollView(ctx);
             hsv.setHorizontalScrollBarEnabled(false);
-            LinearLayout row = new LinearLayout(this);
+            LinearLayout row = new LinearLayout(ctx);
             row.setOrientation(LinearLayout.HORIZONTAL);
             hsv.addView(row);
             content.addView(hsv, new LinearLayout.LayoutParams(
@@ -183,7 +139,7 @@ public class RecommendActivity extends Activity {
             }
         }
         if (firstFocus == null) {
-            TextView empty = new TextView(this);
+            TextView empty = new TextView(ctx);
             empty.setText("没有拿到推荐数据（MoviePilot 接口暂时没返回内容）");
             empty.setTextColor(0xFF8FA3B0);
             empty.setTextSize(16);
@@ -192,7 +148,7 @@ public class RecommendActivity extends Activity {
     }
 
     private View makeCard(final MpClient.Item item, final boolean firstInRow) {
-        LinearLayout card = new LinearLayout(this);
+        LinearLayout card = new LinearLayout(ctx);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setFocusable(true);
         card.setFocusableInTouchMode(true);
@@ -203,8 +159,8 @@ public class RecommendActivity extends Activity {
         clp.rightMargin = dp(14);
         card.setLayoutParams(clp);
 
-        FrameLayout box = new FrameLayout(this);
-        ImageView poster = new ImageView(this);
+        FrameLayout box = new FrameLayout(ctx);
+        ImageView poster = new ImageView(ctx);
         poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
         poster.setBackgroundColor(0xFF1A2330);
         box.addView(poster, new FrameLayout.LayoutParams(
@@ -213,7 +169,7 @@ public class RecommendActivity extends Activity {
 
         // 评分角标
         if (item.rating > 0) {
-            TextView score = new TextView(this);
+            TextView score = new TextView(ctx);
             score.setText(String.format("%.1f", item.rating));
             score.setTextColor(0xFF0B1116);
             score.setTextSize(12);
@@ -231,7 +187,7 @@ public class RecommendActivity extends Activity {
             box.addView(score, slp);
         }
 
-        TextView name = new TextView(this);
+        TextView name = new TextView(ctx);
         name.setText(item.title == null || item.title.isEmpty() ? "未命名" : item.title);
         name.setTextColor(0xFFE6EEF5);
         name.setTextSize(13);
@@ -242,7 +198,7 @@ public class RecommendActivity extends Activity {
         nlp.topMargin = dp(6);
         card.addView(name, nlp);
 
-        TextView meta = new TextView(this);
+        TextView meta = new TextView(ctx);
         String y = item.year == null || item.year.isEmpty() ? "" : item.year;
         meta.setText((item.type == null ? "" : item.type) + (y.isEmpty() ? "" : " · " + y));
         meta.setTextColor(0xFF8FA3B0);
@@ -288,7 +244,7 @@ public class RecommendActivity extends Activity {
             @Override public void run() {
                 final Bitmap bmp = MpClient.poster(url);
                 if (bmp == null) { Log.w(TAG, "poster failed " + url); return; }
-                runOnUiThread(new Runnable() {
+                post(new Runnable() {
                     @Override public void run() { view.setImageBitmap(bmp); }
                 });
             }
@@ -304,7 +260,7 @@ public class RecommendActivity extends Activity {
         if (item.versions > 0) head.append("  ").append(item.versions).append(" 个版本");
 
         if (item.libId == null || item.libId.isEmpty()) {
-            new AlertDialog.Builder(this)
+            new AlertDialog.Builder(getContext())
                     .setTitle(item.title)
                     .setMessage(head + "\n\n" + (item.overview == null || item.overview.isEmpty()
                             ? "（暂无简介）" : item.overview)
@@ -313,7 +269,7 @@ public class RecommendActivity extends Activity {
                     .show();
             return;
         }
-        final AlertDialog loading = new AlertDialog.Builder(this)
+        final AlertDialog loading = new AlertDialog.Builder(getContext())
                 .setTitle(item.title)
                 .setMessage("正在读取磁力版本…")
                 .setNegativeButton("取消", null)
@@ -321,11 +277,11 @@ public class RecommendActivity extends Activity {
         new Thread(new Runnable() {
             @Override public void run() {
                 final java.util.List<LibClient.Mag> mags = LibClient.magnets(item.libId);
-                runOnUiThread(new Runnable() {
+                post(new Runnable() {
                     @Override public void run() {
                         loading.dismiss();
                         if (mags.isEmpty()) {
-                            new AlertDialog.Builder(RecommendActivity.this)
+                            new AlertDialog.Builder(getContext())
                                     .setTitle(item.title)
                                     .setMessage(head + "\n\n（资源库里没有磁力）")
                                     .setPositiveButton("关闭", null).show();
@@ -344,12 +300,12 @@ public class RecommendActivity extends Activity {
                                   final String head) {
         final String[] labels = new String[mags.size()];
         for (int i = 0; i < mags.size(); i++) labels[i] = mags.get(i).label();
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(getContext())
                 .setTitle(item.title + "  转存 115")
                 .setItems(labels, new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
                         final LibClient.Mag mag = mags.get(which);
-                        final AlertDialog wait = new AlertDialog.Builder(RecommendActivity.this)
+                        final AlertDialog wait = new AlertDialog.Builder(getContext())
                                 .setTitle(item.title)
                                 .setMessage("正在转存到 115…")
                                 .setCancelable(false)
@@ -357,10 +313,10 @@ public class RecommendActivity extends Activity {
                         new Thread(new Runnable() {
                             @Override public void run() {
                                 final String msg = LibClient.transfer(mag.hash);
-                                runOnUiThread(new Runnable() {
+                                post(new Runnable() {
                                     @Override public void run() {
                                         wait.dismiss();
-                                        new AlertDialog.Builder(RecommendActivity.this)
+                                        new AlertDialog.Builder(getContext())
                                                 .setTitle(item.title)
                                                 .setMessage(msg + "\n\n" + mag.label()
                                                         + "\n\n转存后在 115（Movies 目录）里播放")
@@ -389,16 +345,13 @@ public class RecommendActivity extends Activity {
         return d;
     }
 
-    private void closeWithSlide() {
-        View root = findViewById(android.R.id.content);
-        root.animate().translationX(screenW).setDuration(200)
-                .withEndAction(new Runnable() {
-                    @Override public void run() { finish(); overridePendingTransition(0, 0); }
-                }).start();
+    /** 让推荐页拿到焦点（进入这一页时调）。 */
+    public void focusFirst() {
+        if (firstFocus != null) firstFocus.requestFocus();
     }
 
-    @Override public void onBackPressed() {
-        closeWithSlide();
+    private void closeWithSlide() {
+        if (listener != null) listener.onBack();
     }
 
     private int dp(float v) {

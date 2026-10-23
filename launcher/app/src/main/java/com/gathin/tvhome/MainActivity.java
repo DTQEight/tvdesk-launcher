@@ -93,6 +93,9 @@ import java.util.Set;
  */
 public class MainActivity extends Activity implements AppAdapter.TileListener {
     private View pageTabHome, pageTabRec;
+    private boolean pageIsRecommend;
+    private androidx.viewpager2.widget.ViewPager2 pager;
+    private RecommendView recommendView;
 
     private static final int LAUNCHER_SETTINGS_REQUEST = 42;
     /** Sent by QuickSettingsActivity: open Launcher settings from here so Home rebuilds when they close. */
@@ -1140,6 +1143,69 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** 右上方两个 tab：最近观看（带集数/进度副标题）+ 待定。 */
     /** 顶部居中的页面 tab：主页 / 推荐。 */
+    /** 两页横向 ViewPager2：第 0 页透明（露出主页），第 1 页是推荐墙。 */
+    /** 判断 view 是否在 container 里（用来识别焦点落在哪一页）。 */
+    private boolean isInside(View view, View container) {
+        if (view == null || container == null) return false;
+        View p = view;
+        while (p != null) {
+            if (p == container) return true;
+            p = (p.getParent() instanceof View) ? (View) p.getParent() : null;
+        }
+        return false;
+    }
+
+    /** 两页横向 ViewPager2：第 0 页透明（露出主页），第 1 页是推荐墙。 */
+    private void installPager() {
+        try {
+            pager = new androidx.viewpager2.widget.ViewPager2(this);
+            pager.setOrientation(androidx.viewpager2.widget.ViewPager2.ORIENTATION_HORIZONTAL);
+            pager.setUserInputEnabled(false);
+            pager.setOffscreenPageLimit(1);
+            pager.setAdapter(new androidx.recyclerview.widget.RecyclerView.Adapter<
+                    androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
+                @Override public int getItemCount() { return 2; }
+                @Override public int getItemViewType(int position) { return position; }
+
+                @Override public androidx.recyclerview.widget.RecyclerView.ViewHolder onCreateViewHolder(
+                        android.view.ViewGroup parent, int viewType) {
+                    if (viewType == 0) {
+                        View v = new View(MainActivity.this);
+                        v.setBackgroundColor(0x00000000);
+                        v.setLayoutParams(new android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+                        return new androidx.recyclerview.widget.RecyclerView.ViewHolder(v) { };
+                    }
+                    recommendView = new RecommendView(MainActivity.this);
+                    recommendView.setLayoutParams(new android.view.ViewGroup.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+                    recommendView.setListener(new RecommendView.Listener() {
+                        @Override public void onBack() { showHomePage(); }
+                    });
+                    return new androidx.recyclerview.widget.RecyclerView.ViewHolder(recommendView) { };
+                }
+
+                @Override public void onBindViewHolder(
+                        androidx.recyclerview.widget.RecyclerView.ViewHolder holder, int position) { }
+            });
+            pager.registerOnPageChangeCallback(
+                    new androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+                        @Override public void onPageSelected(int position) {
+                            setPageTabSelected(position == 1);
+                            if (position == 1 && recommendView != null) recommendView.focusFirst();
+                        }
+                    });
+            FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
+            plp.topMargin = dp(92);   // 顶部时钟/胶囊/页面 tab 保持可见
+            root.addView(pager, plp);
+        } catch (Throwable t) {
+            android.util.Log.e("CYT-MP", "installPager failed " + t);
+        }
+    }
+
     private void installPageTabs() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
@@ -1147,10 +1213,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         final View home = pageChip("主页", true);
         final View rec = pageChip("推荐 ›", false);
-        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(dp(96), dp(40));
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(dp(96), dp(42));
         lp1.rightMargin = dp(10);
         bar.addView(home, lp1);
-        bar.addView(rec, new LinearLayout.LayoutParams(dp(110), dp(40)));
+        bar.addView(rec, new LinearLayout.LayoutParams(dp(110), dp(42)));
 
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
@@ -1166,26 +1232,27 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             home.setNextFocusDownId(tabsLeft[0].getId());
             rec.setNextFocusDownId(tabsRight[1].getId());
         }
-        home.setOnClickListener(v -> { });
+        home.setOnClickListener(v -> showHomePage());
         rec.setOnClickListener(v -> openRecommend());
     }
 
     /** 一个页面 tab 芯片。 */
+    /** 一个页面 tab 芯片。 */
     private View pageChip(String text, boolean selected) {
         TextView tv = new TextView(this);
         tv.setText(text);
-        tv.setTextSize(14);
+        tv.setTextSize(15);
         tv.setGravity(android.view.Gravity.CENTER);
         tv.setSingleLine(true);
         tv.setId(android.view.View.generateViewId());
         tv.setFocusable(true);
         tv.setFocusableInTouchMode(true);
-        final boolean[] sel = { selected };
-        tv.setBackground(pageChipBg(sel[0], false));
-        tv.setTextColor(sel[0] ? 0xFF0B1116 : 0xFFE6EEF5);
+        tv.setBackground(pageChipBg(selected, false));
+        tv.setTextColor(selected ? 0xFF0B1116 : 0xFFE6EEF5);
         tv.setOnFocusChangeListener((v, has) -> {
-            v.setBackground(pageChipBg(sel[0], has));
-            ((TextView) v).setTextColor(has || sel[0] ? 0xFF0B1116 : 0xFFE6EEF5);
+            boolean picked = (v == pageTabRec) ? pageIsRecommend : !pageIsRecommend;
+            v.setBackground(pageChipBg(picked, has));
+            ((TextView) v).setTextColor(has || picked ? 0xFF0B1116 : 0xFFE6EEF5);
             v.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(120).start();
         });
         return tv;
@@ -1241,6 +1308,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             r1.setNextFocusLeftId(t2.getId());
             t2.setNextFocusLeftId(t1.getId());
             installPageTabs();
+            installPager();
         } catch (Throwable t) {
             android.util.Log.e("CYT-TAB", "installTopTabs failed " + t);
         }
@@ -1289,18 +1357,39 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         rightEdgeIds.add(v.getId());
     }
 
+    /** 切到推荐页（同一 ViewPager2 里横向平移，无缝）。 */
     private void openRecommend() {
         try {
-            if (recommendOpening) return;
-            recommendOpening = true;
-            startActivity(new Intent(this, RecommendActivity.class));
-            overridePendingTransition(0, 0);
-            handler.postDelayed(new Runnable() {
-                @Override public void run() { recommendOpening = false; }
-            }, 1200);
+            if (pager == null) return;
+            pager.setCurrentItem(1, true);
+            if (recommendView != null) handler.postDelayed(new Runnable() {
+                @Override public void run() { recommendView.focusFirst(); }
+            }, 260L);
+            setPageTabSelected(true);
         } catch (Throwable t) {
-            recommendOpening = false;
             android.util.Log.w("CYT-MP", "openRecommend failed " + t);
+        }
+    }
+
+    /** 切回主页。 */
+    private void showHomePage() {
+        if (pager != null) pager.setCurrentItem(0, true);
+        setPageTabSelected(false);
+        if (pageTabHome != null) handler.postDelayed(new Runnable() {
+            @Override public void run() { pageTabHome.requestFocus(); }
+        }, 260L);
+    }
+
+    /** 顶部 tab 选中态跟着页面走。 */
+    private void setPageTabSelected(boolean recommend) {
+        pageIsRecommend = recommend;
+        if (pageTabHome != null) {
+            pageTabHome.setBackground(pageChipBg(!recommend, false));
+            ((TextView) pageTabHome).setTextColor(recommend ? 0xFFE6EEF5 : 0xFF0B1116);
+        }
+        if (pageTabRec != null) {
+            pageTabRec.setBackground(pageChipBg(recommend, false));
+            ((TextView) pageTabRec).setTextColor(recommend ? 0xFF0B1116 : 0xFFE6EEF5);
         }
     }
 
@@ -1744,6 +1833,21 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        // 在推荐页时，别让焦点跑回主页；在主页时也别跑到看不见的推荐页
+        if (pager != null && event.getAction() == KeyEvent.ACTION_DOWN) {
+            View cur = getCurrentFocus();
+            if (pager.getCurrentItem() == 1) {
+                if (cur == null || !isInside(cur, recommendView)) {
+                    if (recommendView != null) recommendView.focusFirst();
+                    return true;
+                }
+            } else {
+                if (cur != null && recommendView != null && isInside(cur, recommendView)) {
+                    if (pageTabRec != null) pageTabRec.requestFocus();
+                    return true;
+                }
+            }
+        }
         if (event.getAction() == KeyEvent.ACTION_DOWN
                 && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT) {
             View rf = getCurrentFocus();
