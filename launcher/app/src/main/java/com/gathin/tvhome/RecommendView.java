@@ -42,6 +42,13 @@ public class RecommendView extends FrameLayout {
     private int screenW;
     private View firstFocus;
     private android.content.Context ctx;
+    private ScrollView wallScroll;
+    private ScrollView detailScroll;
+    private LinearLayout detailContent;
+    private TextView detailBack;
+    private boolean detailOpen;
+    private View firstDetailFocus;
+    private View lastFocusedCard;
     private ImageView bg;
 
     public RecommendView(android.content.Context ctx) {
@@ -69,16 +76,18 @@ public class RecommendView extends FrameLayout {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         ScrollView scroll = new ScrollView(ctx);
+        wallScroll = scroll;
         scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
         content = new LinearLayout(ctx);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(56), dp(104), dp(56), dp(60));   // 顶部让开时钟/胶囊/页面 tab
+        content.setPadding(dp(56), dp(20), dp(56), dp(60));
         scroll.addView(content, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(scroll, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        // 页面 tab 由 MainActivity 统一提供（pager 外面），这里不再画
+        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        slp.topMargin = dp(104);   // 内容在顶部 chrome 下方滚动，不会压到时钟
+        root.addView(scroll, slp);
 
 
         final TextView loading = new TextView(ctx);
@@ -90,6 +99,31 @@ public class RecommendView extends FrameLayout {
         addView(root, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        // 详情层（默认隐藏）：点卡片时铺上来
+        detailScroll = new ScrollView(ctx);
+        // 详情层完全透明，背景图直接透出（不加黑底）
+        detailScroll.setBackgroundColor(0x00000000);   // 完全透明，背景图直接透出来
+        detailScroll.setVisibility(View.GONE);
+        detailContent = new LinearLayout(ctx);
+        detailContent.setOrientation(LinearLayout.VERTICAL);
+        detailContent.setPadding(dp(56), dp(66), dp(56), dp(60));   // 顶部给固定返回按钮留位
+        detailScroll.addView(detailContent, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        dlp.topMargin = dp(104);
+        root.addView(detailScroll, dlp);
+        // 固定的返回按钮（不随内容滚动）
+        detailBack = chipButton("← 返回片单", false);
+        detailBack.setVisibility(View.GONE);
+        FrameLayout.LayoutParams bkp = new FrameLayout.LayoutParams(dp(150), dp(40));
+        bkp.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+        bkp.rightMargin = dp(56);
+        bkp.topMargin = dp(112);
+        addView(detailBack, bkp);
+        detailBack.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { closeDetail(); }
+        });
         loadBackdrop();
 
 
@@ -209,6 +243,7 @@ public class RecommendView extends FrameLayout {
         card.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override public void onFocusChange(View v, boolean has) {
                 v.setBackground(cardBg(has));
+                if (has) lastFocusedCard = v;
                 v.animate().scaleX(has ? 1.07f : 1f).scaleY(has ? 1.07f : 1f)
                         .setDuration(130).start();
             }
@@ -225,9 +260,8 @@ public class RecommendView extends FrameLayout {
             }
         });
         card.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { showDetail(item); }
+            @Override public void onClick(View v) { showMovieDetail(item); }
         });
-
         loadPoster(poster, item.poster);
         cards.add(card);
         return card;
@@ -397,6 +431,332 @@ public class RecommendView extends FrameLayout {
         }, "cyt-rec-backdrop").start();
     }
 
+
+    // ---------------- 详情页 ----------------
+
+    /** 打开影片详情页（海报 + 信息 + 简介 + 资源列表）。 */
+    private void showMovieDetail(final MpClient.Item item) {
+        if (detailScroll == null) return;
+        detailOpen = true;
+        detailContent.removeAllViews();
+        if (wallScroll != null) wallScroll.setVisibility(View.GONE);
+        detailScroll.setVisibility(View.VISIBLE);
+        if (detailBack != null) { detailBack.setVisibility(View.VISIBLE); detailBack.requestFocus(); }
+        detailScroll.scrollTo(0, 0);
+
+        // 顶部返回
+
+        // 先放占位，异步取详情 + 磁力
+        final LinearLayout body = new LinearLayout(ctx);
+        body.setOrientation(LinearLayout.VERTICAL);
+        detailContent.addView(body);
+
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final LibClient.Movie mv = LibClient.movie(item.libId);
+                final java.util.List<LibClient.Mag> mags = LibClient.magnets(item.libId);
+                post(new Runnable() {
+                    @Override public void run() { renderDetail(item, mv, mags); }
+                });
+            }
+        }, "cyt-detail").start();
+    }
+
+    private void renderDetail(final MpClient.Item item, final LibClient.Movie mv,
+                              final java.util.List<LibClient.Mag> mags) {
+        detailContent.removeAllViews();
+
+        String title = mv != null && !mv.title.isEmpty() ? mv.title : item.title;
+        String year = mv != null && !mv.years.isEmpty() ? mv.years : item.year;
+
+        // 头：左海报 + 右信息
+        LinearLayout head = new LinearLayout(ctx);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+
+        ImageView poster = new ImageView(ctx);
+        poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        poster.setBackgroundColor(0xFF1A2330);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(220), dp(330));
+        plp.rightMargin = dp(28);
+        head.addView(poster, plp);
+        if (mv != null && !mv.poster.isEmpty()) loadInto(poster, mv.poster);
+        else if (item.poster != null) loadInto(poster, item.poster);
+
+        LinearLayout info = new LinearLayout(ctx);
+        info.setOrientation(LinearLayout.VERTICAL);
+
+        TextView name = new TextView(ctx);
+        name.setText(title + (year.isEmpty() ? "" : " (" + year + ")"));
+        name.setTextColor(0xFFFFFFFF);
+        name.setTextSize(30);
+        name.setTypeface(null, android.graphics.Typeface.BOLD);
+        info.addView(name);
+
+        if (mv != null && !mv.otitle.isEmpty()) {
+            TextView ot = new TextView(ctx);
+            ot.setText(mv.otitle + (mv.alias.isEmpty() ? "" : "   /   又名：" + mv.alias));
+            ot.setTextColor(0xFF8FA3B0);
+            ot.setTextSize(14);
+            ot.setMaxLines(2);
+            LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            olp.topMargin = dp(6);
+            info.addView(ot, olp);
+        }
+
+        if (mv != null) {
+            addField(info, "导演", mv.director);
+            addField(info, "主演", mv.performer);
+            addField(info, "编剧", mv.writer);
+            addField(info, "类型", mv.category);
+            addField(info, "制片国家/地区", mv.area);
+            addField(info, "语言", mv.language);
+            addField(info, "首映", mv.release);
+            if (!mv.imdbId.isEmpty()) addField(info, "IMDb", mv.imdbId);
+        }
+
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        head.addView(info, ilp);
+        detailContent.addView(head);
+
+        // 剧情简介
+        if (mv != null && !mv.intro.isEmpty()) {
+            addSectionTitle("剧情简介");
+            TextView abs = new TextView(ctx);
+            abs.setText(mv.intro);
+            abs.setTextColor(0xFFC9D6DF);
+            abs.setTextSize(15);
+            abs.setLineSpacing(dp(6), 1f);
+            LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            alp.bottomMargin = dp(8);
+            detailContent.addView(abs, alp);
+        }
+
+        // 资源列表
+        addSectionTitle("这部影片共 " + mags.size() + " 条资源");
+        if (mags.isEmpty()) {
+            TextView empty = new TextView(ctx);
+            empty.setText("（资源库里没有磁力）");
+            empty.setTextColor(0xFF8FA3B0);
+            empty.setTextSize(15);
+            detailContent.addView(empty);
+            return;
+        }
+        for (int i = 0; i < mags.size(); i++) {
+            detailContent.addView(magRow(item, mags.get(i), i == 0));
+        }
+        if (firstDetailFocus != null) firstDetailFocus.requestFocus();
+    }
+
+    /** 一条资源：标题 + 大小/日期/类型 + 复制/打开/转存 三个按钮。 */
+    private View magRow(final MpClient.Item item, final LibClient.Mag mag, boolean first) {
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(18), dp(14), dp(18), dp(14));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(12));
+        bg.setColor(0xFF121A22);
+        bg.setStroke(dp(1), 0x22FFFFFF);
+        row.setBackground(bg);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp.bottomMargin = dp(10);
+        row.setLayoutParams(rlp);
+
+        LinearLayout texts = new LinearLayout(ctx);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        TextView t = new TextView(ctx);
+        t.setText(mag.title);
+        t.setTextColor(0xFFE6EEF5);
+        t.setTextSize(15);
+        t.setMaxLines(1);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        texts.addView(t);
+        TextView meta = new TextView(ctx);
+        StringBuilder sb = new StringBuilder();
+        if (!mag.size.isEmpty()) sb.append(mag.size);
+        if (!mag.published.isEmpty()) sb.append(sb.length() > 0 ? " · " : "").append(mag.published);
+        if (!mag.detail.isEmpty()) sb.append(sb.length() > 0 ? " · " : "").append(mag.detail);
+        meta.setText(sb.toString());
+        meta.setTextColor(0xFF8FA3B0);
+        meta.setTextSize(13);
+        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mlp.topMargin = dp(4);
+        texts.addView(meta, mlp);
+        row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView copy = chipButton("复制磁力", false);
+        copy.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { copyMagnet(mag); }
+        });
+        TextView open = chipButton("打开", false);
+        open.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openPage(mag.detailUrl); }
+        });
+        TextView save = chipButton("转存 115", true);
+        save.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { transfer(item, mag); }
+        });
+
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(112), dp(40));
+        bp.leftMargin = dp(10);
+        row.addView(copy, bp);
+        LinearLayout.LayoutParams bp2 = new LinearLayout.LayoutParams(dp(84), dp(40));
+        bp2.leftMargin = dp(10);
+        row.addView(open, bp2);
+        LinearLayout.LayoutParams bp3 = new LinearLayout.LayoutParams(dp(112), dp(40));
+        bp3.leftMargin = dp(10);
+        row.addView(save, bp3);
+
+        if (first && firstDetailFocus == null) firstDetailFocus = copy;
+        return row;
+    }
+
+    private void addField(LinearLayout parent, String label, String value) {
+        if (value == null || value.isEmpty()) return;
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(8);
+        TextView l = new TextView(ctx);
+        l.setText(label);
+        l.setTextColor(0xFF7E8B96);
+        l.setTextSize(13);
+        l.setMinWidth(dp(110));
+        TextView v = new TextView(ctx);
+        v.setText(value);
+        v.setTextColor(0xFFE6EEF5);
+        v.setTextSize(14);
+        v.setMaxLines(3);
+        row.addView(l);
+        row.addView(v);
+        parent.addView(row, rlp);
+    }
+
+    private void addSectionTitle(String text) {
+        TextView tv = new TextView(ctx);
+        tv.setText(text);
+        tv.setTextColor(0xFFFFFFFF);
+        tv.setTextSize(19);
+        tv.setTypeface(null, android.graphics.Typeface.BOLD);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(26);
+        lp.bottomMargin = dp(12);
+        detailContent.addView(tv, lp);
+    }
+
+    /** 小圆角按钮。 */
+    private TextView chipButton(String text, boolean accent) {
+        final TextView tv = new TextView(ctx);
+        tv.setText(text);
+        tv.setTextSize(14);
+        tv.setGravity(android.view.Gravity.CENTER);
+        tv.setSingleLine(true);
+        tv.setFocusable(true);
+        tv.setFocusableInTouchMode(true);
+        tv.setTextColor(0xFFE6EEF5);
+        tv.setBackground(buttonBg(accent, false));
+        tv.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override public void onFocusChange(View v, boolean has) {
+                v.setBackground(buttonBg(accent, has));
+                ((TextView) v).setTextColor(has ? 0xFF0B1116 : 0xFFE6EEF5);
+                v.animate().scaleX(has ? 1.04f : 1f).scaleY(has ? 1.04f : 1f).setDuration(110).start();
+            }
+        });
+        return tv;
+    }
+
+    private GradientDrawable buttonBg(boolean accent, boolean focused) {
+        GradientDrawable d = new GradientDrawable();
+        d.setCornerRadius(dp(10));
+        if (focused) { d.setColor(0xFFFFFFFF); d.setStroke(dp(3), 0xFF00A4DC); }
+        else if (accent) { d.setColor(0xFF7C5CFF); d.setStroke(dp(1), 0x33FFFFFF); }
+        else { d.setColor(0x1FFFFFFF); d.setStroke(dp(1), 0x33FFFFFF); }
+        return d;
+    }
+
+    private void copyMagnet(LibClient.Mag mag) {
+        try {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                    ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("magnet",
+                    "magnet:?xt=urn:btih:" + mag.hash));
+            android.widget.Toast.makeText(ctx, "磁力已复制", android.widget.Toast.LENGTH_SHORT).show();
+        } catch (Throwable t) {
+            android.widget.Toast.makeText(ctx, "复制失败", android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openPage(String url) {
+        if (url == null || url.isEmpty()) {
+            android.widget.Toast.makeText(ctx, "没有可打开的页面", android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(url));
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+        } catch (Throwable t) {
+            android.widget.Toast.makeText(ctx, "没有可用的浏览器", android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** 转存到 115（原来的逻辑）。 */
+    private void transfer(final MpClient.Item item, final LibClient.Mag mag) {
+        final android.app.AlertDialog wait = new android.app.AlertDialog.Builder(ctx)
+                .setTitle(item.title)
+                .setMessage("正在转存到 115…")
+                .setCancelable(false)
+                .show();
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final String msg = LibClient.transfer(mag.hash);
+                post(new Runnable() {
+                    @Override public void run() {
+                        wait.dismiss();
+                        new android.app.AlertDialog.Builder(ctx)
+                                .setTitle(item.title)
+                                .setMessage(msg + "\n\n" + mag.label()
+                                        + "\n\n转存后在 115（Movies 目录）里播放")
+                                .setPositiveButton("好", null)
+                                .show();
+                    }
+                });
+            }
+        }, "cyt-transfer").start();
+    }
+
+    /** 详情页是否打开。 */
+    public boolean isDetailOpen() { return detailOpen; }
+
+    /** 关掉详情页，回到片单。 */
+    public void closeDetail() {
+        if (!detailOpen) return;
+        detailOpen = false;
+        if (detailScroll != null) detailScroll.setVisibility(View.GONE);
+        if (detailBack != null) detailBack.setVisibility(View.GONE);
+        if (wallScroll != null) wallScroll.setVisibility(View.VISIBLE);
+        if (lastFocusedCard != null) lastFocusedCard.requestFocus();
+    }
+
+    private void loadInto(final ImageView view, final String url) {
+        LOADER.execute(new Runnable() {
+            @Override public void run() {
+                final android.graphics.Bitmap bmp = MpClient.poster(url);
+                if (bmp == null) return;
+                post(new Runnable() {
+                    @Override public void run() { view.setImageBitmap(bmp); }
+                });
+            }
+        });
+    }
 
     private int dp(float v) {
         return Math.round(v * getResources().getDisplayMetrics().density);

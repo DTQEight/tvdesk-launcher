@@ -1904,6 +1904,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 && (event.getKeyCode() == KeyEvent.KEYCODE_BACK
                 || event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE)) {
             if (pager != null && pager.getCurrentItem() == 1) {
+                if (recommendView != null && recommendView.isDetailOpen()) {
+                    recommendView.closeDetail();
+                    return true;
+                }
                 showHomePage();
             }
             return true;

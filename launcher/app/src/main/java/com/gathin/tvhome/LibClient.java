@@ -126,17 +126,23 @@ public final class LibClient {
     }
 
     /** 一条磁力资源。 */
+    /** 一条磁力资源。 */
     public static final class Mag {
-        public final String hash, title, size, quality;
-        Mag(String h, String ti, String s, String q) { hash = h; title = ti; size = s; quality = q; }
+        public final String hash, title, size, quality, published, detailUrl, detail;
+        Mag(String h, String ti, String s, String q, String p, String d, String c) {
+            hash = h; title = ti; size = s; quality = q;
+            published = p == null ? "" : p;
+            detailUrl = d == null ? "" : d;
+            detail = c == null ? "" : c;
+        }
         /** 列表里显示的短标签：第03集 · WEB-1080P · 2.31 GB */
         public String label() {
             StringBuilder sb = new StringBuilder();
             java.util.regex.Matcher m = java.util.regex.Pattern
-                    .compile("\u7b2c\\s*(\\d+)\\s*\u96c6").matcher(title == null ? "" : title);
-            if (m.find()) sb.append("\u7b2c").append(m.group(1)).append("\u96c6");
-            if (quality != null && !quality.isEmpty()) sb.append(sb.length() > 0 ? " \u00b7 " : "").append(quality);
-            if (size != null && !size.isEmpty()) sb.append(sb.length() > 0 ? " \u00b7 " : "").append(size);
+                    .compile("\\u7b2c\\s*(\\d+)\\s*\\u96c6").matcher(title == null ? "" : title);
+            if (m.find()) sb.append("\\u7b2c").append(m.group(1)).append("\\u96c6");
+            if (quality != null && !quality.isEmpty()) sb.append(sb.length() > 0 ? " \\u00b7 " : "").append(quality);
+            if (size != null && !size.isEmpty()) sb.append(sb.length() > 0 ? " \\u00b7 " : "").append(size);
             return sb.length() == 0 ? (title == null ? hash : title) : sb.toString();
         }
     }
@@ -154,7 +160,8 @@ public final class LibClient {
                 String h = o.optString("info_hash", "");
                 if (h.isEmpty()) continue;
                 out.add(new Mag(h, o.optString("title", ""), o.optString("size", ""),
-                        o.optString("quality", "")));
+                        o.optString("quality", ""), o.optString("published_at", ""),
+                        o.optString("detail_url", ""), o.optString("category", "")));
             }
             Log.i(TAG, "magnets " + movieId + " -> " + out.size());
         } catch (Throwable t) {
@@ -203,6 +210,43 @@ public final class LibClient {
     }
 
     /** 影片详情（点击卡片时取简介/导演/主演）。 */
+    /** 影片详情（结构化，给详情页用）。 */
+    public static final class Movie {
+        public String title = "", otitle = "", alias = "", years = "", category = "", area = "",
+                language = "", director = "", performer = "", writer = "", release = "",
+                imdbId = "", intro = "", poster = "";
+    }
+
+    public static Movie movie(String id) {
+        String raw = get("/api/movie/" + enc(id));
+        if (raw == null) return null;
+        try {
+            JSONObject m = new JSONObject(raw).optJSONObject("movie");
+            if (m == null) return null;
+            Movie mv = new Movie();
+            mv.title = m.optString("title", "");
+            mv.otitle = m.optString("otitle", "");
+            mv.alias = m.optString("alias", "");
+            mv.years = m.optString("years", "");
+            mv.category = m.optString("category", "");
+            mv.area = m.optString("area", "");
+            mv.language = m.optString("language", "");
+            mv.director = m.optString("director", "");
+            mv.performer = m.optString("performer", "");
+            mv.writer = m.optString("writer", "");
+            mv.release = m.optString("release", "");
+            mv.imdbId = m.optString("imdb_id", "");
+            mv.intro = m.optString("abstract", "");
+            String img = m.optString("image", "");
+            mv.poster = img.isEmpty() ? "" : BASE + img;
+            return mv;
+        } catch (Throwable t) {
+            Log.w(TAG, "movie parse failed " + t);
+            return null;
+        }
+    }
+
+
     public static String detail(String id) {
         String raw = get("/api/movie/" + enc(id));
         if (raw == null) return null;
