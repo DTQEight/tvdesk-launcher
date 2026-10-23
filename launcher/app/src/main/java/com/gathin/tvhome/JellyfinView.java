@@ -84,6 +84,10 @@ public class JellyfinView extends FrameLayout {
 
     private void build() {
         setBackgroundColor(0xFF0B1116);   // 不透明，否则主页 dock 会透出来
+        // 整页自己拿焦点（方向键由 Activity 转进来），不依赖子控件能不能聚焦
+        setFocusable(true);
+        setFocusableInTouchMode(true);
+        setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
 
         bg = new ImageView(ctx);
         bg.setScaleType(ImageView.ScaleType.CENTER_CROP);

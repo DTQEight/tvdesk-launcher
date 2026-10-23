@@ -1485,6 +1485,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (topScrim != null) topScrim.setVisibility(page == 0 ? View.GONE : View.VISIBLE);
         // 切到推荐/影视页时把主页网格（含底部 dock）藏起来，否则会浮在页面上面
         if (grid != null) grid.setVisibility(page == 0 ? View.VISIBLE : View.GONE);
+        if (jellyfinView != null && page != 2) jellyfinView.setTabsFocused(false);
         // 直播预览只在主页显示，别的小页面上一角露出会很怪
         if (liveSurface != null) liveSurface.setVisibility(page == 0 ? View.VISIBLE : View.INVISIBLE);
         if (page != 0 && livePreview != null) livePreview.stop();   // 让出硬件解码器
@@ -1986,14 +1987,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
             return true;
         }
-        // 影视页顶到最上面再按 ↑：把焦点还给顶部 tab（否则会被影视页一直吞键）
-        // 影视页顶到最上面再按 ↑：直接回主页（主页上焦点导航是原生的，顶部 tab 自然能到）
+        // 影视页顶到最上面再按 ↑：光标交回顶部「影视」tab，剩下让用户自己左右选
         if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
                 && event.getAction() == KeyEvent.ACTION_DOWN
                 && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
                 && jellyfinView.isAtTop()) {
-            jellyfinView.setTabsFocused(false);
-            showHomePage();
+            jellyfinView.setTabsFocused(true);      // 页面让出按键和选中框
+            if (pageTabLib != null) pageTabLib.requestFocus();
             return true;
         }
         // 在 tab 上按 ↓：回到影视页
