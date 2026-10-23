@@ -19,12 +19,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 影视页：仿 Jellyfin Android TV 的排版。
- * 左侧竖排导航（主页 + 各媒体库），右侧横图卡片行（继续观看 / 最近添加）。
+ * 影视页：仿 Jellyfin Android TV。
+ * 左：库列表；右：横图卡片行；点卡片进详情。
+ * 焦点不交给系统，自己维护 (行, 列) 选择状态，遥控器走位才可预期。
  */
 public class JellyfinView extends FrameLayout {
 
     private static final String TAG = "CYT-JF";
+    private static final int MODE_RAIL = 0;
+    private static final int MODE_CONTENT = 1;
 
     private final Context ctx;
     private final java.util.concurrent.ExecutorService loader =
@@ -34,23 +37,48 @@ public class JellyfinView extends FrameLayout {
     private LinearLayout rail;
     private ScrollView homeScroll;
     private LinearLayout homeContent;
+    private TextView emptyHint;
+
+    // 库页
     private ScrollView libScroll;
     private LinearLayout libContent;
     private TextView libTitle;
-    private View libBack;
+    private TextView libBack;
+
+    // 详情页
+    private ScrollView detailScroll;
+    private LinearLayout detailContent;
+    private TextView detailBack;
 
     private boolean libOpen;
-    private View firstFocus;
-    private View lastFocused;
-    private final List<List<View>> rows = new ArrayList<>();
+    private boolean detailOpen;
+
     private final List<JellyfinClient.Card> views = new ArrayList<>();
     private final List<View> railItems = new ArrayList<>();
+    private final List<List<View>> rowViews = new ArrayList<>();
+    private final List<List<JellyfinClient.Card>> rowCards = new ArrayList<>();
+    private final List<List<View>> libViews = new ArrayList<>();
+    private final List<List<JellyfinClient.Card>> libCards = new ArrayList<>();
+
+    // 详情页里的可选项：播放按钮 + 剧集
+    private final List<View> detailButtons = new ArrayList<>();
+    private final List<String[]> detailEpisodes = new ArrayList<>();
+    private String detailMovieId, detailMovieTitle;
+
+    private int mode = MODE_RAIL;
+    private int railSel = 0;
+    private int rowSel = 0;
+    private int colSel = 0;
+    private int libRowSel = 0, libColSel = 0;
+    private int detailSel = 0;
 
     public JellyfinView(Context c) {
         super(c);
         ctx = c;
         build();
     }
+
+    // ---------------- 布局 ----------------
 
     private void build() {
         setBackgroundColor(0xCC0B1116);
@@ -88,6 +116,7 @@ public class JellyfinView extends FrameLayout {
 
         libScroll = new ScrollView(ctx);
         libScroll.setVerticalScrollBarEnabled(false);
+        libScroll.setBackgroundColor(0xFF0B1116);
         libScroll.setVisibility(View.GONE);
         libContent = new LinearLayout(ctx);
         libContent.setOrientation(LinearLayout.VERTICAL);
@@ -119,19 +148,38 @@ public class JellyfinView extends FrameLayout {
         blp.rightMargin = dp(56);
         blp.topMargin = dp(120);
         addView(libBack, blp);
-        libBack.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { closeLibrary(); }
-        });
+
+        detailScroll = new ScrollView(ctx);
+        detailScroll.setVerticalScrollBarEnabled(false);
+        detailScroll.setBackgroundColor(0xFF0B1116);   // 盖住左栏，详情页背景不串
+        detailScroll.setVisibility(View.GONE);
+        detailContent = new LinearLayout(ctx);
+        detailContent.setOrientation(LinearLayout.VERTICAL);
+        detailContent.setPadding(0, 0, 0, dp(60));
+        detailScroll.addView(detailContent, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        dlp.topMargin = dp(104);
+        addView(detailScroll, dlp);
+
+        detailBack = chipText("← 返回");
+        detailBack.setVisibility(View.GONE);
+        FrameLayout.LayoutParams dblp = new FrameLayout.LayoutParams(dp(110), dp(40));
+        dblp.gravity = Gravity.TOP | Gravity.END;
+        dblp.rightMargin = dp(56);
+        dblp.topMargin = dp(120);
+        addView(detailBack, dblp);
 
         loadEverything();
     }
 
     private void loadEverything() {
-        final TextView loading = new TextView(ctx);
-        loading.setText("正在读取影视库…");
-        loading.setTextColor(0xFF8FA3B0);
-        loading.setTextSize(16);
-        homeContent.addView(loading);
+        emptyHint = new TextView(ctx);
+        emptyHint.setText("正在读取影视库…");
+        emptyHint.setTextColor(0xFF8FA3B0);
+        emptyHint.setTextSize(16);
+        homeContent.addView(emptyHint);
 
         new Thread(new Runnable() {
             @Override public void run() {
@@ -143,106 +191,67 @@ public class JellyfinView extends FrameLayout {
                     @Override public void run() {
                         views.clear();
                         views.addAll(v);
-                        homeContent.removeView(loading);
+                        homeContent.removeView(emptyHint);
                         buildRail();
                         renderHome(resume, latests);
+                        highlight();
                     }
                 });
             }
         }, "cyt-jf-load").start();
     }
 
+    // ---------------- 左栏 ----------------
+
     private void buildRail() {
         rail.removeAllViews();
         railItems.clear();
-
-        TextView home = railItem("主页");
-        home.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { showHome(); }
-        });
-        rail.addView(home, new LinearLayout.LayoutParams(
+        railItems.add(railItem("主页"));
+        for (JellyfinClient.Card lib : views) railItems.add(railItem(lib.title));
+        for (View v : railItems) rail.addView(v, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(40)));
-        railItems.add(home);
-
-        for (final JellyfinClient.Card lib : views) {
-            TextView item = railItem(lib.title);
-            item.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { openLibrary(lib); }
-            });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(40));
-            lp.topMargin = dp(6);
-            rail.addView(item, lp);
-            railItems.add(item);
-        }
-        firstFocus = home;
     }
 
     private TextView railItem(String text) {
-        final TextView tv = new TextView(ctx);
+        TextView tv = new TextView(ctx);
         tv.setText(text);
         tv.setTextSize(15);
         tv.setSingleLine(true);
         tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
         tv.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         tv.setPadding(dp(14), 0, dp(10), 0);
-        tv.setFocusable(true);
-        tv.setFocusableInTouchMode(true);
         tv.setTextColor(0xFFC9D6DF);
         tv.setBackground(railBg(false, false));
-        tv.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override public void onFocusChange(View v, boolean has) {
-                if (has) lastFocused = v;
-                boolean sel = v.getTag() != null && (Boolean) v.getTag();
-                v.setBackground(railBg(sel, has));
-                ((TextView) v).setTextColor(has || sel ? 0xFFFFFFFF : 0xFFC9D6DF);
-            }
-        });
         return tv;
     }
 
-    private GradientDrawable railBg(boolean selected, boolean focused) {
+    private GradientDrawable railBg(boolean selected, boolean current) {
         GradientDrawable d = new GradientDrawable();
         d.setCornerRadius(dp(8));
-        if (focused) { d.setColor(0xFF2A3B4D); d.setStroke(dp(2), 0xFF00A4DC); }
-        else if (selected) { d.setColor(0xFF1B2A38); }
+        if (selected) { d.setColor(0xFF2A3B4D); d.setStroke(dp(2), 0xFF00A4DC); }
+        else if (current) { d.setColor(0xFF1B2A38); }
         else { d.setColor(0x00000000); }
         return d;
     }
 
-    private void markRailSelected(int index) {
-        for (int i = 0; i < railItems.size(); i++) {
-            View v = railItems.get(i);
-            boolean sel = i == index;
-            v.setTag(sel);
-            v.setBackground(railBg(sel, v.hasFocus()));
-            ((TextView) v).setTextColor(v.hasFocus() || sel ? 0xFFFFFFFF : 0xFFC9D6DF);
-        }
-    }
+    // ---------------- 主页内容 ----------------
 
     private void renderHome(List<JellyfinClient.Card> resume,
                             List<List<JellyfinClient.Card>> latests) {
         homeContent.removeAllViews();
-        rows.clear();
+        rowViews.clear();
+        rowCards.clear();
 
         if (!resume.isEmpty()) {
             addRowTitle(homeContent, "继续观看");
-            List<View> cards = new ArrayList<>();
-            for (JellyfinClient.Card c : resume) cards.add(landscapeCard(c, true));
-            addRow(homeContent, cards);
+            addRow(homeContent, resume, true);
         }
-
         for (int i = 0; i < views.size() && i < latests.size(); i++) {
             List<JellyfinClient.Card> list = latests.get(i);
             if (list.isEmpty()) continue;
             addRowTitle(homeContent, "最近添加 · " + views.get(i).title);
-            List<View> cards = new ArrayList<>();
-            for (JellyfinClient.Card c : list) cards.add(landscapeCard(c, false));
-            addRow(homeContent, cards);
+            addRow(homeContent, list, false);
         }
-
-        wireFocus(rows);
-        if (!railItems.isEmpty()) railItems.get(0).requestFocus();
     }
 
     private void addRowTitle(LinearLayout parent, String text) {
@@ -258,30 +267,31 @@ public class JellyfinView extends FrameLayout {
         parent.addView(tv, lp);
     }
 
-    private void addRow(LinearLayout parent, List<View> cards) {
+    private void addRow(LinearLayout parent, List<JellyfinClient.Card> cards, boolean progress) {
         LinearLayout inner = new LinearLayout(ctx);
         inner.setOrientation(LinearLayout.HORIZONTAL);
-        for (View c : cards) inner.addView(c);
+        List<View> viewsInRow = new ArrayList<>();
+        for (JellyfinClient.Card c : cards) {
+            View card = landscapeCard(c, progress);
+            inner.addView(card);
+            viewsInRow.add(card);
+        }
         HorizontalScrollView hsv = new HorizontalScrollView(ctx);
         hsv.setHorizontalScrollBarEnabled(false);
-        hsv.setFocusable(false);
-        hsv.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         hsv.addView(inner);
         parent.addView(hsv, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        rows.add(cards);
+        rowViews.add(viewsInRow);
+        rowCards.add(cards);
     }
 
     private View landscapeCard(final JellyfinClient.Card card, boolean showProgress) {
         LinearLayout box = new LinearLayout(ctx);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setFocusable(true);
-        box.setFocusableInTouchMode(true);
         box.setPadding(dp(6), dp(6), dp(6), dp(8));
         box.setBackground(cardBg(false));
-        box.setId(View.generateViewId());
 
-        final FrameLayout thumb = new FrameLayout(ctx);
+        FrameLayout thumb = new FrameLayout(ctx);
         ImageView img = new ImageView(ctx);
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         img.setBackgroundColor(0xFF1A2330);
@@ -296,18 +306,18 @@ public class JellyfinView extends FrameLayout {
                     FrameLayout.LayoutParams.MATCH_PARENT, dp(4));
             trlp.gravity = Gravity.BOTTOM;
             thumb.addView(track, trlp);
-
-            final View bar = new View(ctx);
+            View bar = new View(ctx);
             bar.setBackgroundColor(0xFF00A4DC);
             FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(0, dp(4));
             blp.gravity = Gravity.BOTTOM;
             thumb.addView(bar, blp);
+            final View barRef = bar;
             final int pct = (int) Math.max(2, Math.min(100, card.progress));
             thumb.post(new Runnable() {
                 @Override public void run() {
-                    ViewGroup.LayoutParams lp = bar.getLayoutParams();
+                    ViewGroup.LayoutParams lp = barRef.getLayoutParams();
                     lp.width = Math.max(2, thumb.getWidth() * pct / 100);
-                    bar.setLayoutParams(lp);
+                    barRef.setLayoutParams(lp);
                 }
             });
         }
@@ -336,102 +346,14 @@ public class JellyfinView extends FrameLayout {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.rightMargin = dp(12);
         box.setLayoutParams(lp);
-        box.setOnFocusChangeListener(focusEffect());
-        box.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { play(card); }
-        });
         return box;
-    }
-
-    private void openLibrary(final JellyfinClient.Card lib) {
-        libOpen = true;
-        libContent.removeAllViews();
-        homeScroll.setVisibility(View.GONE);
-        libScroll.setVisibility(View.VISIBLE);
-        libScroll.scrollTo(0, 0);
-        libTitle.setText(lib.title);
-        libTitle.setVisibility(View.VISIBLE);
-        libBack.setVisibility(View.VISIBLE);
-        libBack.requestFocus();
-
-        int idx = 0;
-        for (int i = 0; i < views.size(); i++) if (views.get(i).id.equals(lib.id)) idx = i + 1;
-        markRailSelected(idx);
-
-        final TextView loading = new TextView(ctx);
-        loading.setText("正在读取 " + lib.title + " …");
-        loading.setTextColor(0xFF8FA3B0);
-        loading.setTextSize(16);
-        libContent.addView(loading);
-
-        new Thread(new Runnable() {
-            @Override public void run() {
-                final List<JellyfinClient.Card> items = JellyfinClient.libraryItems(lib.id, 300);
-                post(new Runnable() {
-                    @Override public void run() {
-                        libContent.removeView(loading);
-                        renderLibrary(items);
-                    }
-                });
-            }
-        }, "cyt-jf-lib").start();
-    }
-
-    private void renderLibrary(List<JellyfinClient.Card> items) {
-        if (items.isEmpty()) {
-            TextView empty = new TextView(ctx);
-            empty.setText("（这个库是空的）");
-            empty.setTextColor(0xFF8FA3B0);
-            empty.setTextSize(15);
-            libContent.addView(empty);
-            return;
-        }
-        final int perRow = 7;
-        List<List<View>> grid = new ArrayList<>();
-        LinearLayout row = null;
-        for (int i = 0; i < items.size(); i++) {
-            if (i % perRow == 0) {
-                row = new LinearLayout(ctx);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                rlp.topMargin = dp(10);
-                libContent.addView(row, rlp);
-                grid.add(new ArrayList<View>());
-            }
-            View card = posterCard(items.get(i));
-            if (row != null) row.addView(card);
-            grid.get(grid.size() - 1).add(card);
-        }
-        wireFocus(grid);
-    }
-
-    public boolean isLibraryOpen() { return libOpen; }
-
-    public void closeLibrary() {
-        if (!libOpen) return;
-        libOpen = false;
-        libScroll.setVisibility(View.GONE);
-        libTitle.setVisibility(View.GONE);
-        libBack.setVisibility(View.GONE);
-        homeScroll.setVisibility(View.VISIBLE);
-        markRailSelected(0);
-        if (!railItems.isEmpty()) railItems.get(0).requestFocus();
-    }
-
-    private void showHome() {
-        if (libOpen) closeLibrary();
-        markRailSelected(0);
     }
 
     private View posterCard(final JellyfinClient.Card card) {
         LinearLayout box = new LinearLayout(ctx);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setFocusable(true);
-        box.setFocusableInTouchMode(true);
         box.setPadding(dp(6), dp(6), dp(6), dp(8));
         box.setBackground(cardBg(false));
-        box.setId(View.generateViewId());
 
         ImageView img = new ImageView(ctx);
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -454,12 +376,413 @@ public class JellyfinView extends FrameLayout {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.rightMargin = dp(10);
         box.setLayoutParams(lp);
-        box.setOnFocusChangeListener(focusEffect());
-        box.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { play(card); }
-        });
         return box;
     }
+
+    private GradientDrawable cardBg(boolean selected) {
+        GradientDrawable d = new GradientDrawable();
+        d.setCornerRadius(dp(8));
+        if (selected) { d.setColor(0xFF223140); d.setStroke(dp(3), 0xFF00A4DC); }
+        else { d.setColor(0x00000000); }
+        return d;
+    }
+
+    // ---------------- 高亮 ----------------
+
+    private void highlight() {
+        for (int i = 0; i < railItems.size(); i++) {
+            View v = railItems.get(i);
+            boolean sel = mode == MODE_RAIL && i == railSel;
+            v.setBackground(railBg(sel, i == railSel));
+            ((TextView) v).setTextColor(sel || i == railSel ? 0xFFFFFFFF : 0xFFC9D6DF);
+        }
+        for (int r = 0; r < rowViews.size(); r++) {
+            List<View> row = rowViews.get(r);
+            for (int c = 0; c < row.size(); c++) {
+                boolean sel = !libOpen && mode == MODE_CONTENT && r == rowSel && c == colSel;
+                row.get(c).setBackground(cardBg(sel));
+            }
+        }
+        for (int r = 0; r < libViews.size(); r++) {
+            List<View> row = libViews.get(r);
+            for (int c = 0; c < row.size(); c++) {
+                boolean sel = libOpen && mode == MODE_CONTENT && r == libRowSel && c == libColSel;
+                row.get(c).setBackground(cardBg(sel));
+            }
+        }
+        for (int i = 0; i < detailButtons.size(); i++) {
+            View v = detailButtons.get(i);
+            v.setBackground(chipBg(detailOpen && i == detailSel));
+            ((TextView) v).setTextColor(detailOpen && i == detailSel ? 0xFF0B1116 : 0xFFE6EEF5);
+        }
+        scrollSelectionIntoView();
+    }
+
+    private void scrollSelectionIntoView() {
+        View target = null;
+        if (detailOpen) {
+            if (detailSel < detailButtons.size()) target = detailButtons.get(detailSel);
+        } else if (libOpen) {
+            if (libRowSel < libViews.size() && libColSel < libViews.get(libRowSel).size()) {
+                target = libViews.get(libRowSel).get(libColSel);
+            }
+        } else if (mode == MODE_CONTENT && rowSel < rowViews.size()
+                && colSel < rowViews.get(rowSel).size()) {
+            target = rowViews.get(rowSel).get(colSel);
+        }
+        if (target == null) return;
+        final View t = target;
+        t.post(new Runnable() {
+            @Override public void run() {
+                t.requestRectangleOnScreen(new android.graphics.Rect(0, dp(110), 0, dp(70)), true);
+            }
+        });
+    }
+
+    // ---------------- 按键 ----------------
+
+    public boolean handleKey(int keyCode) {
+        if (keyCode != android.view.KeyEvent.KEYCODE_DPAD_LEFT
+                && keyCode != android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+                && keyCode != android.view.KeyEvent.KEYCODE_DPAD_UP
+                && keyCode != android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                && keyCode != android.view.KeyEvent.KEYCODE_DPAD_CENTER
+                && keyCode != android.view.KeyEvent.KEYCODE_ENTER) {
+            return false;
+        }
+        if (detailOpen) { detailKey(keyCode); return true; }
+        if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER
+                || keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
+            activate();
+            return true;
+        }
+        if (mode == MODE_RAIL) railKey(keyCode); else contentKey(keyCode);
+        highlight();
+        return true;
+    }
+
+    private void railKey(int keyCode) {
+        if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
+            if (railSel > 0) railSel--;
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (railSel + 1 < railItems.size()) railSel++;
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) {
+            if (libOpen) {
+                if (!libViews.isEmpty()) { mode = MODE_CONTENT; libRowSel = 0; libColSel = 0; }
+            } else if (!rowViews.isEmpty()) {
+                mode = MODE_CONTENT; rowSel = 0; colSel = 0;
+            }
+        }
+    }
+
+    private void contentKey(int keyCode) {
+        List<List<View>> viewsRows = libOpen ? libViews : rowViews;
+        if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
+            if (libOpen) {
+                if (libColSel > 0) libColSel--;
+                else mode = MODE_RAIL;
+            } else {
+                if (colSel > 0) colSel--;
+                else mode = MODE_RAIL;
+            }
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) {
+            if (libOpen) {
+                if (libColSel + 1 < viewsRows.get(libRowSel).size()) libColSel++;
+            } else {
+                if (colSel + 1 < viewsRows.get(rowSel).size()) colSel++;
+            }
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
+            if (libOpen) {
+                if (libRowSel > 0) { libRowSel--; libColSel = Math.min(libColSel, viewsRows.get(libRowSel).size() - 1); }
+                else mode = MODE_RAIL;
+            } else {
+                if (rowSel > 0) { rowSel--; colSel = Math.min(colSel, viewsRows.get(rowSel).size() - 1); }
+                else mode = MODE_RAIL;
+            }
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (libOpen) {
+                if (libRowSel + 1 < viewsRows.size()) { libRowSel++; libColSel = Math.min(libColSel, viewsRows.get(libRowSel).size() - 1); }
+            } else {
+                if (rowSel + 1 < viewsRows.size()) { rowSel++; colSel = Math.min(colSel, viewsRows.get(rowSel).size() - 1); }
+            }
+        }
+    }
+
+    private void activate() {
+        if (mode == MODE_RAIL) {
+            if (railSel == 0) { closeLibrary(); }
+            else if (railSel - 1 < views.size()) openLibrary(views.get(railSel - 1));
+            return;
+        }
+        if (libOpen) {
+            if (libRowSel < libCards.size() && libColSel < libCards.get(libRowSel).size()) {
+                openDetail(libCards.get(libRowSel).get(libColSel));
+            }
+        } else if (rowSel < rowCards.size() && colSel < rowCards.get(rowSel).size()) {
+            openDetail(rowCards.get(rowSel).get(colSel));
+        }
+    }
+
+    private void detailKey(int keyCode) {
+        if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (detailSel + 1 < detailButtons.size()) detailSel++;
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
+            if (detailSel > 0) detailSel--;
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
+            detailSel = Math.max(0, detailSel - 1);
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) {
+            detailSel = Math.min(detailButtons.size() - 1, detailSel + 1);
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER
+                || keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
+            activateDetail();
+        }
+        highlight();
+    }
+
+    private void activateDetail() {
+        if (detailSel == 0) {
+            if (!detailEpisodes.isEmpty()) playEpisode(detailEpisodes.get(0));
+            else if (detailMovieId != null) playItem(detailMovieId, detailMovieTitle);
+        } else {
+            int idx = detailSel - 1;
+            if (idx < detailEpisodes.size()) playEpisode(detailEpisodes.get(idx));
+        }
+    }
+
+    // ---------------- 库页 ----------------
+
+    private void openLibrary(final JellyfinClient.Card lib) {
+        libOpen = true;
+        mode = MODE_RAIL;
+        libContent.removeAllViews();
+        libViews.clear();
+        libCards.clear();
+        homeScroll.setVisibility(View.GONE);
+        libScroll.setVisibility(View.VISIBLE);
+        libScroll.scrollTo(0, 0);
+        libTitle.setText(lib.title);
+        libTitle.setVisibility(View.VISIBLE);
+        libBack.setVisibility(View.VISIBLE);
+
+        final TextView loading = new TextView(ctx);
+        loading.setText("正在读取 " + lib.title + " …");
+        loading.setTextColor(0xFF8FA3B0);
+        loading.setTextSize(16);
+        libContent.addView(loading);
+
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final List<JellyfinClient.Card> items = JellyfinClient.libraryItems(lib.id, 300);
+                post(new Runnable() {
+                    @Override public void run() {
+                        libContent.removeView(loading);
+                        renderLibrary(items);
+                        highlight();
+                    }
+                });
+            }
+        }, "cyt-jf-lib").start();
+    }
+
+    private void renderLibrary(List<JellyfinClient.Card> items) {
+        if (items.isEmpty()) {
+            TextView empty = new TextView(ctx);
+            empty.setText("（这个库是空的）");
+            empty.setTextColor(0xFF8FA3B0);
+            libContent.addView(empty);
+            return;
+        }
+        final int perRow = 7;
+        LinearLayout row = null;
+        for (int i = 0; i < items.size(); i++) {
+            if (i % perRow == 0) {
+                row = new LinearLayout(ctx);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                rlp.topMargin = dp(10);
+                libContent.addView(row, rlp);
+                libViews.add(new ArrayList<View>());
+                libCards.add(new ArrayList<JellyfinClient.Card>());
+            }
+            View card = posterCard(items.get(i));
+            row.addView(card);
+            libViews.get(libViews.size() - 1).add(card);
+            libCards.get(libCards.size() - 1).add(items.get(i));
+        }
+    }
+
+    public boolean isLibraryOpen() { return libOpen; }
+
+    public void closeLibrary() {
+        if (!libOpen) return;
+        libOpen = false;
+        mode = MODE_RAIL;
+        libScroll.setBackgroundColor(0xFF0B1116);
+        libScroll.setVisibility(View.GONE);
+        libTitle.setVisibility(View.GONE);
+        libBack.setVisibility(View.GONE);
+        homeScroll.setVisibility(View.VISIBLE);
+        highlight();
+    }
+
+    // ---------------- 详情页 ----------------
+
+    private void openDetail(final JellyfinClient.Card card) {
+        detailOpen = true;
+        detailSel = 0;
+        detailButtons.clear();
+        detailEpisodes.clear();
+        detailContent.removeAllViews();
+        homeScroll.setVisibility(View.GONE);
+        libScroll.setBackgroundColor(0xFF0B1116);
+        libScroll.setVisibility(View.GONE);
+        detailScroll.setVisibility(View.VISIBLE);
+        detailScroll.scrollTo(0, 0);
+        detailBack.setVisibility(View.VISIBLE);
+
+        final TextView loading = new TextView(ctx);
+        loading.setText("正在读取详情…");
+        loading.setTextColor(0xFF8FA3B0);
+        loading.setTextSize(16);
+        detailContent.addView(loading);
+
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final JellyfinClient.Detail d = JellyfinClient.detail(card.id);
+                final List<String[]> eps = (d != null && "Series".equals(d.type))
+                        ? JellyfinClient.episodes(card.id) : new ArrayList<String[]>();
+                post(new Runnable() {
+                    @Override public void run() {
+                        detailContent.removeView(loading);
+                        renderDetail(d, eps);
+                        highlight();
+                    }
+                });
+            }
+        }, "cyt-jf-detail").start();
+    }
+
+    private void renderDetail(JellyfinClient.Detail d, List<String[]> eps) {
+        detailButtons.clear();
+        detailEpisodes.clear();
+        detailEpisodes.addAll(eps);
+        if (d == null) {
+            TextView err = new TextView(ctx);
+            err.setText("读取详情失败");
+            err.setTextColor(0xFF8FA3B0);
+            detailContent.addView(err);
+            return;
+        }
+        detailMovieId = d.id;
+        detailMovieTitle = d.name;
+
+        FrameLayout hero = new FrameLayout(ctx);
+        ImageView heroImg = new ImageView(ctx);
+        heroImg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        heroImg.setBackgroundColor(0xFF16202B);
+        hero.addView(heroImg, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        loadWithFallback(heroImg, d.backdrop, d.poster);
+        View fade = new View(ctx);
+        fade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x22000000, 0xEE0B1116}));
+        hero.addView(fade, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        detailContent.addView(hero, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(260)));
+
+        LinearLayout head = new LinearLayout(ctx);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        ImageView poster = new ImageView(ctx);
+        poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        poster.setBackgroundColor(0xFF1A2330);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(170), dp(255));
+        plp.rightMargin = dp(24);
+        plp.topMargin = dp(10);
+        plp.leftMargin = dp(56);
+        head.addView(poster, plp);
+        loadWithFallback(poster, d.poster, null);
+
+        LinearLayout info = new LinearLayout(ctx);
+        info.setOrientation(LinearLayout.VERTICAL);
+        TextView title = new TextView(ctx);
+        title.setText(d.name + (d.year.isEmpty() ? "" : "  (" + d.year + ")"));
+        title.setTextColor(0xFFFFFFFF);
+        title.setTextSize(26);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        info.addView(title);
+
+        StringBuilder meta = new StringBuilder();
+        if (!d.score.isEmpty()) meta.append("★ ").append(d.score).append("   ");
+        if (!d.rating.isEmpty()) meta.append(d.rating).append("   ");
+        if (!d.runtime.isEmpty()) meta.append(d.runtime);
+        if (meta.length() > 0) {
+            TextView m = new TextView(ctx);
+            m.setText(meta.toString());
+            m.setTextColor(0xFF8FA3B0);
+            m.setTextSize(14);
+            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            mlp.topMargin = dp(6);
+            info.addView(m, mlp);
+        }
+
+        LinearLayout btns = new LinearLayout(ctx);
+        btns.setOrientation(LinearLayout.HORIZONTAL);
+        TextView playBtn = chipText("▶ 播放");
+        LinearLayout.LayoutParams blp2 = new LinearLayout.LayoutParams(dp(150), dp(44));
+        blp2.topMargin = dp(16);
+        btns.addView(playBtn, blp2);
+        detailButtons.add(playBtn);
+        info.addView(btns);
+
+        if (!d.overview.isEmpty()) {
+            TextView ov = new TextView(ctx);
+            ov.setText(d.overview);
+            ov.setTextColor(0xFFC9D6DF);
+            ov.setTextSize(14);
+            ov.setLineSpacing(dp(5), 1f);
+            ov.setMaxLines(6);
+            LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            olp.topMargin = dp(14);
+            info.addView(ov, olp);
+        }
+        head.addView(info, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        detailContent.addView(head);
+
+        if (!eps.isEmpty()) {
+            addRowTitle(detailContent, "剧集");
+            LinearLayout row = new LinearLayout(ctx);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setPadding(dp(56), 0, dp(56), 0);
+            for (int i = 0; i < eps.size(); i++) {
+                TextView eb = chipText(eps.get(i)[1]);
+                LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(dp(150), dp(44));
+                elp.rightMargin = dp(8);
+                elp.topMargin = dp(6);
+                row.addView(eb, elp);
+                detailButtons.add(eb);
+            }
+            detailContent.addView(row);
+        }
+    }
+
+    public boolean isDetailOpen() { return detailOpen; }
+
+    public void closeDetail() {
+        if (!detailOpen) return;
+        detailOpen = false;
+        detailScroll.setVisibility(View.GONE);
+        detailBack.setVisibility(View.GONE);
+        if (libOpen) libScroll.setVisibility(View.VISIBLE);
+        else homeScroll.setVisibility(View.VISIBLE);
+        highlight();
+    }
+
+    // ---------------- 播放 ----------------
 
     private void play(JellyfinClient.Card card) {
         try {
@@ -474,42 +797,31 @@ public class JellyfinView extends FrameLayout {
         }
     }
 
-    private View.OnFocusChangeListener focusEffect() {
-        return new View.OnFocusChangeListener() {
-            @Override public void onFocusChange(View v, boolean has) {
-                if (has) lastFocused = v;
-                v.setBackground(cardBg(has));
-                v.animate().scaleX(has ? 1.04f : 1f).scaleY(has ? 1.04f : 1f).setDuration(110).start();
-            }
-        };
-    }
-
-    private GradientDrawable cardBg(boolean focused) {
-        GradientDrawable d = new GradientDrawable();
-        d.setCornerRadius(dp(8));
-        if (focused) { d.setColor(0xFF223140); d.setStroke(dp(3), 0xFF00A4DC); }
-        else { d.setColor(0x00000000); }
-        return d;
-    }
-
-    private void wireFocus(List<List<View>> rs) {
-        for (int r = 0; r < rs.size(); r++) {
-            List<View> row = rs.get(r);
-            for (int i = 0; i < row.size(); i++) {
-                View c = row.get(i);
-                if (i + 1 < row.size()) c.setNextFocusRightId(row.get(i + 1).getId());
-                if (i > 0) c.setNextFocusLeftId(row.get(i - 1).getId());
-                if (r + 1 < rs.size() && !rs.get(r + 1).isEmpty()) {
-                    List<View> next = rs.get(r + 1);
-                    c.setNextFocusDownId(next.get(Math.min(i, next.size() - 1)).getId());
-                }
-                if (r > 0 && !rs.get(r - 1).isEmpty()) {
-                    List<View> prev = rs.get(r - 1);
-                    c.setNextFocusUpId(prev.get(Math.min(i, prev.size() - 1)).getId());
-                }
-            }
+    private void playEpisode(String[] ep) {
+        try {
+            Intent it = new Intent(ctx, JellyfinPlayerActivity.class);
+            it.putExtra("itemId", ep[0]);
+            it.putExtra("title", ep[1]);
+            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(it);
+        } catch (Throwable t) {
+            Log.w(TAG, "playEpisode failed " + t);
         }
     }
+
+    private void playItem(String id, String name) {
+        try {
+            Intent it = new Intent(ctx, JellyfinPlayerActivity.class);
+            it.putExtra("itemId", id);
+            it.putExtra("title", name);
+            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(it);
+        } catch (Throwable t) {
+            Log.w(TAG, "playItem failed " + t);
+        }
+    }
+
+    // ---------------- 工具 ----------------
 
     private void loadWithFallback(final ImageView view, final String primary, final String fallback) {
         loader.execute(new Runnable() {
@@ -527,18 +839,23 @@ public class JellyfinView extends FrameLayout {
         });
     }
 
-    /** 这一页拿到焦点。 */
     public void focusFirst() {
-        if (libOpen && libBack != null) { libBack.requestFocus(); return; }
-        if (firstFocus != null) { firstFocus.requestFocus(); return; }
-        if (rail != null && rail.getChildCount() > 0) rail.getChildAt(0).requestFocus();
+        mode = MODE_RAIL;
+        highlight();
     }
 
-    /** 用主页当前那张背景。 */
     public void setBackdrop(android.graphics.Bitmap bmp) {
         if (bmp == null || bg == null) return;
         bg.setImageBitmap(bmp);
         bg.animate().alpha(1f).setDuration(400).start();
+    }
+
+    private GradientDrawable chipBg(boolean selected) {
+        GradientDrawable d = new GradientDrawable();
+        d.setCornerRadius(dp(8));
+        if (selected) { d.setColor(0xFFFFFFFF); d.setStroke(dp(2), 0xFF00A4DC); }
+        else { d.setColor(0x1FFFFFFF); d.setStroke(dp(1), 0x33FFFFFF); }
+        return d;
     }
 
     private TextView chipText(String text) {
@@ -547,24 +864,8 @@ public class JellyfinView extends FrameLayout {
         tv.setTextSize(14);
         tv.setGravity(Gravity.CENTER);
         tv.setSingleLine(true);
-        tv.setFocusable(true);
-        tv.setFocusableInTouchMode(true);
         tv.setTextColor(0xFFE6EEF5);
-        GradientDrawable d = new GradientDrawable();
-        d.setCornerRadius(dp(8));
-        d.setColor(0x1FFFFFFF);
-        d.setStroke(dp(1), 0x33FFFFFF);
-        tv.setBackground(d);
-        tv.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override public void onFocusChange(View v, boolean has) {
-                GradientDrawable b = new GradientDrawable();
-                b.setCornerRadius(dp(8));
-                if (has) { b.setColor(0xFFFFFFFF); b.setStroke(dp(2), 0xFF00A4DC); }
-                else { b.setColor(0x1FFFFFFF); b.setStroke(dp(1), 0x33FFFFFF); }
-                v.setBackground(b);
-                ((TextView) v).setTextColor(has ? 0xFF0B1116 : 0xFFE6EEF5);
-            }
-        });
+        tv.setBackground(chipBg(false));
         return tv;
     }
 

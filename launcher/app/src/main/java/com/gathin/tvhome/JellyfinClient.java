@@ -361,6 +361,40 @@ public final class JellyfinClient {
 
     /** 第几集开始播：优先「继续观看」，否则第一集。返回 {itemId, 标题}，失败返回 null。 */
     /** 直接播某个条目（电影 / 单集）：返回 {itemId, label, posMs}。 */
+    /** 影片/剧集详情（Jellyfin 详情页用）。 */
+    public static final class Detail {
+        public String id = "", name = "", overview = "", year = "", rating = "", score = "",
+                runtime = "", type = "", poster = "", backdrop = "";
+        public String[] firstEpisode;   // 剧集才有
+    }
+
+    public static Detail detail(String id) {
+        JSONObject o = getJson(BASE + "/Users/" + USER_ID + "/Items/" + id
+                + "?Fields=Overview,ProductionYear,OfficialRating,CommunityRating,RunTimeTicks,ImageTags,BackdropImageTags,Type");
+        if (o == null) return null;
+        Detail d = new Detail();
+        d.id = o.optString("Id", id);
+        d.name = o.optString("Name", "");
+        d.overview = o.optString("Overview", "");
+        int y = o.optInt("ProductionYear", 0);
+        d.year = y > 0 ? String.valueOf(y) : "";
+        d.rating = o.optString("OfficialRating", "");
+        double score = o.optDouble("CommunityRating", 0);
+        d.score = score > 0 ? String.format("%.1f", score) : "";
+        long ticks = o.optLong("RunTimeTicks", 0);
+        if (ticks > 0) {
+            long min = ticks / 600000000L;
+            d.runtime = (min / 60) + " 小时 " + (min % 60) + " 分";
+        }
+        d.type = o.optString("Type", "");
+        JSONObject tags = o.optJSONObject("ImageTags");
+        String tag = tags == null ? null : tags.optString("Primary", null);
+        d.poster = BASE + "/Items/" + id + "/Images/Primary?maxHeight=720&quality=90"
+                + (tag == null ? "" : "&tag=" + tag);
+        d.backdrop = BASE + "/Items/" + id + "/Images/Backdrop/0?maxWidth=1600&quality=90";
+        return d;
+    }
+
     public static String[] itemTarget(String itemId) {
         JSONObject o = getJson(BASE + "/Users/" + USER_ID + "/Items/" + itemId
                 + "?Fields=Name,Type,ParentIndexNumber,IndexNumber,UserData");

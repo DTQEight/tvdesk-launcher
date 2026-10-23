@@ -1187,22 +1187,28 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         return new androidx.recyclerview.widget.RecyclerView.ViewHolder(v) { };
                     }
                     if (viewType == 2) {
-                        jellyfinView = new JellyfinView(MainActivity.this);
-                        if (currentBackdrop != null) jellyfinView.setBackdrop(currentBackdrop);
-                        jellyfinView.setLayoutParams(new android.view.ViewGroup.LayoutParams(
+                        if (jellyfinView == null) {
+                            jellyfinView = new JellyfinView(MainActivity.this);
+                            jellyfinView.setLayoutParams(new android.view.ViewGroup.LayoutParams(
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+                            if (currentBackdrop != null) jellyfinView.setBackdrop(currentBackdrop);
+                        }
+                        final JellyfinView jv = jellyfinView;
+                        return new androidx.recyclerview.widget.RecyclerView.ViewHolder(jv) { };
+                    }
+                    if (recommendView == null) {
+                        recommendView = new RecommendView(MainActivity.this);
+                        recommendView.setLayoutParams(new android.view.ViewGroup.LayoutParams(
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT));
-                        return new androidx.recyclerview.widget.RecyclerView.ViewHolder(jellyfinView) { };
+                        if (currentBackdrop != null) recommendView.setBackdrop(currentBackdrop);
+                        recommendView.setListener(new RecommendView.Listener() {
+                            @Override public void onBack() { showHomePage(); }
+                        });
                     }
-                    recommendView = new RecommendView(MainActivity.this);
-                    recommendView.setLayoutParams(new android.view.ViewGroup.LayoutParams(
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT));
-                    if (currentBackdrop != null) recommendView.setBackdrop(currentBackdrop);
-                    recommendView.setListener(new RecommendView.Listener() {
-                        @Override public void onBack() { showHomePage(); }
-                    });
-                    return new androidx.recyclerview.widget.RecyclerView.ViewHolder(recommendView) { };
+                    final RecommendView rvv = recommendView;
+                    return new androidx.recyclerview.widget.RecyclerView.ViewHolder(rvv) { };
                 }
 
                 @Override public void onBindViewHolder(
@@ -1934,22 +1940,38 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         return Math.round(v * getResources().getDisplayMetrics().density);
     }
 
+    /** 从焦点往上找所属的页面视图（防止 pager 重建后字段指向旧实例）。 */
+    private View pageViewOf(View v) {
+        while (v != null) {
+            if (v instanceof JellyfinView || v instanceof RecommendView) return v;
+            android.view.ViewParent p = v.getParent();
+            v = (p instanceof View) ? (View) p : null;
+        }
+        return null;
+    }
+
+    private JellyfinView jellyfinViewOf(View v) {
+        View page = pageViewOf(v);
+        return page instanceof JellyfinView ? (JellyfinView) page : null;
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        // 返回键：在推荐页回主页；在主页吞掉，别把桌面按退出
+        // 返回键：优先关详情/关库页；再回主页；主页吞掉不退出桌面
         if (event.getAction() == KeyEvent.ACTION_DOWN
                 && (event.getKeyCode() == KeyEvent.KEYCODE_BACK
                 || event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE)) {
-            if (pager != null && pager.getCurrentItem() == 1) {
-            if (jellyfinView != null && jellyfinView.isLibraryOpen()) {
-                jellyfinView.closeLibrary();
+            int page = pager == null ? 0 : pager.getCurrentItem();
+            if (page == 2 && jellyfinView != null) {
+                if (jellyfinView.isDetailOpen()) { jellyfinView.closeDetail(); return true; }
+                if (jellyfinView.isLibraryOpen()) { jellyfinView.closeLibrary(); return true; }
+                showHomePage();
                 return true;
             }
-                if (recommendView != null && recommendView.isDetailOpen()) {
-                    recommendView.closeDetail();
-                    return true;
-                }
+            if (page == 1 && recommendView != null) {
+                if (recommendView.isDetailOpen()) { recommendView.closeDetail(); return true; }
                 showHomePage();
+                return true;
             }
             return true;
         }
@@ -1958,7 +1980,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             View cur = getCurrentFocus();
             int page = pager.getCurrentItem();
             if (page == 1 || page == 2) {
-                View pageView = page == 1 ? recommendView : jellyfinView;
+                View pageView = pageViewOf(cur);
+                if (pageView == null) pageView = page == 1 ? recommendView : jellyfinView;
                 if (cur == null || !isInside(cur, pageView)) {
                     if (page == 1 && recommendView != null) recommendView.focusFirst();
                     else if (page == 2 && jellyfinView != null) jellyfinView.focusFirst();
@@ -1979,6 +2002,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 openRecommend();
                 return true;
             }
+        }
+        // 影视页：方向键/OK 全部交给页面自己处理（页面内部维护选择状态）
+        if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && jellyfinView.handleKey(event.getKeyCode())) {
+            return true;
         }
         if (handleSettingsKey(event)) return true;
         if (!reordering) return super.dispatchKeyEvent(event);
