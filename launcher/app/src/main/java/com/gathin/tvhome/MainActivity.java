@@ -1969,11 +1969,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
             return true;
         }
+        // 影视页：方向键/OK 全部交给页面自己处理，必须先于焦点守卫，否则按键会被吞掉
+        if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && jellyfinView.handleKey(event.getKeyCode())) {
+            return true;
+        }
         // 在推荐页/影视页时，别让焦点跑回主页；在主页时也别跑到看不见的页
         if (pager != null && event.getAction() == KeyEvent.ACTION_DOWN) {
             View cur = getCurrentFocus();
             int page = pager.getCurrentItem();
-            if (page == 1 || page == 2) {
+            if (page == 1) {
                 View pageView = pageViewOf(cur);
                 if (pageView == null) pageView = page == 1 ? recommendView : jellyfinView;
                 if (cur == null || !isInside(cur, pageView)) {
@@ -1996,12 +2002,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 openRecommend();
                 return true;
             }
-        }
-        // 影视页：方向键/OK 全部交给页面自己处理（页面内部维护选择状态）
-        if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
-                && event.getAction() == KeyEvent.ACTION_DOWN
-                && jellyfinView.handleKey(event.getKeyCode())) {
-            return true;
         }
         if (handleSettingsKey(event)) return true;
         if (!reordering) return super.dispatchKeyEvent(event);
