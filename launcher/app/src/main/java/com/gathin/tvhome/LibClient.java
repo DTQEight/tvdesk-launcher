@@ -93,6 +93,115 @@ public final class LibClient {
     }
 
     /** 推荐页数据：最新入库 / 电影 / 高分榜。 */
+    /** 资源库的一条片子（给推荐页补位用）。 */
+    public static final class Row {
+        public final String id, title, year, poster;
+        public final int versions;
+        public final double score;
+        Row(String i, String t, String y, String p, int v, double s) {
+            id = i; title = t; year = y; poster = p; versions = v; score = s;
+        }
+    }
+
+    /** 资源库列表（category/sort 由 path 决定）。 */
+    public static List<Row> rows(String path) {
+        List<Row> out = new ArrayList<>();
+        String raw = get(path);
+        if (raw == null) return out;
+        try {
+            JSONArray arr = new JSONObject(raw).optJSONArray("groups");
+            if (arr == null) return out;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.getJSONObject(i);
+                String id = o.optString("movie_id", "");
+                String img = o.optString("image", "");
+                if (id.isEmpty() || img.isEmpty()) continue;
+                out.add(new Row(id, o.optString("title", ""), o.optString("years", ""),
+                        BASE + img, o.optInt("versions", 0), o.optDouble("doub_score", 0)));
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "rows parse failed " + t);
+        }
+        return out;
+    }
+
+    /** 一条磁力资源。 */
+    public static final class Mag {
+        public final String hash, title, size, quality;
+        Mag(String h, String ti, String s, String q) { hash = h; title = ti; size = s; quality = q; }
+        /** 列表里显示的短标签：第03集 · WEB-1080P · 2.31 GB */
+        public String label() {
+            StringBuilder sb = new StringBuilder();
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("\u7b2c\\s*(\\d+)\\s*\u96c6").matcher(title == null ? "" : title);
+            if (m.find()) sb.append("\u7b2c").append(m.group(1)).append("\u96c6");
+            if (quality != null && !quality.isEmpty()) sb.append(sb.length() > 0 ? " \u00b7 " : "").append(quality);
+            if (size != null && !size.isEmpty()) sb.append(sb.length() > 0 ? " \u00b7 " : "").append(size);
+            return sb.length() == 0 ? (title == null ? hash : title) : sb.toString();
+        }
+    }
+
+    /** 某部片的全部磁力版本。 */
+    public static List<Mag> magnets(String movieId) {
+        List<Mag> out = new ArrayList<>();
+        String raw = get("/api/magnets?movie_id=" + enc(movieId));
+        if (raw == null) return out;
+        try {
+            JSONArray arr = new JSONObject(raw).optJSONArray("magnets");
+            if (arr == null) return out;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.getJSONObject(i);
+                String h = o.optString("info_hash", "");
+                if (h.isEmpty()) continue;
+                out.add(new Mag(h, o.optString("title", ""), o.optString("size", ""),
+                        o.optString("quality", "")));
+            }
+            Log.i(TAG, "magnets " + movieId + " -> " + out.size());
+        } catch (Throwable t) {
+            Log.w(TAG, "magnets parse failed " + t);
+        }
+        return out;
+    }
+
+    /** 转存到 115，返回服务端消息（失败返回错误文案）。 */
+    public static String transfer(String infoHash) {
+        HttpURLConnection c = null;
+        BufferedReader r = null;
+        try {
+            c = (HttpURLConnection) new URL(BASE + "/api/115/transfer").openConnection();
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(30000);
+            c.setRequestMethod("POST");
+            c.setDoOutput(true);
+            c.setRequestProperty("X-API-Key", KEY);
+            c.setRequestProperty("Content-Type", "application/json");
+            java.io.OutputStream os = c.getOutputStream();
+            os.write(("{\"info_hash\":\"" + infoHash + "\"}").getBytes("UTF-8"));
+            os.flush(); os.close();
+            int code = c.getResponseCode();
+            r = new BufferedReader(new InputStreamReader(
+                    code == 200 ? c.getInputStream() : c.getErrorStream(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = r.readLine()) != null) sb.append(line);
+            String body = sb.toString();
+            Log.i(TAG, "transfer " + code + " " + body);
+            try {
+                String msg = new JSONObject(body).optString("message", "");
+                if (!msg.isEmpty()) return msg;
+                String detail = new JSONObject(body).optString("detail", "");
+                if (!detail.isEmpty()) return detail;
+            } catch (Throwable ignored) { }
+            return code == 200 ? "\u5df2\u63d0\u4ea4 115 \u8f6c\u5b58" : ("\u8f6c\u5b58\u5931\u8d25 HTTP " + code);
+        } catch (Throwable t) {
+            Log.w(TAG, "transfer failed " + t);
+            return "\u8f6c\u5b58\u5931\u8d25\uff1a" + t;
+        } finally {
+            try { if (r != null) r.close(); } catch (Throwable ignored) { }
+            try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
+        }
+    }
+
     /** 影片详情（点击卡片时取简介/导演/主演）。 */
     public static String detail(String id) {
         String raw = get("/api/movie/" + enc(id));

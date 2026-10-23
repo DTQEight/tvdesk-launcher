@@ -90,8 +90,38 @@ public final class MpClient {
         } finally {
             pool.shutdownNow();
         }
-        int hit = 0;
-        for (Item it : all) if (it.libId != null) hit++;
+        // 只留有资源库资源的片（保证每张卡点开都有磁力），不够的用资源库补位
+        String[] topUp = new String[]{
+                "/api/groups?page=1&sort=latest",
+                "/api/groups?category=%E7%94%B5%E5%BD%B1&page=1&sort=latest",
+                "/api/groups?page=1&sort=score"
+        };
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (int si = 0; si < out.size(); si++) {
+            Section sec = out.get(si);
+            java.util.Iterator<Item> itr = sec.items.iterator();
+            while (itr.hasNext()) {
+                Item it = itr.next();
+                if (it.libId == null) { itr.remove(); continue; }
+                used.add(it.libId);
+            }
+            if (sec.items.size() >= 12) continue;
+            for (LibClient.Row row : LibClient.rows(topUp[Math.min(si, topUp.length - 1)])) {
+                if (sec.items.size() >= 12) break;
+                if (used.contains(row.id)) continue;
+                used.add(row.id);
+                Item fill = new Item(row.title, row.year, "", row.poster, "", row.score);
+                fill.libId = row.id;
+                fill.poster = row.poster;
+                fill.versions = row.versions;
+                sec.items.add(fill);
+            }
+        }
+        for (int si = out.size() - 1; si >= 0; si--) if (out.get(si).items.isEmpty()) out.remove(si);
+
+        int hit2 = 0;
+        for (Section s3 : out) hit2 += s3.items.size();
+        int hit = hit2;
         cache = out;
         cacheAt = System.currentTimeMillis();
         int total = 0;

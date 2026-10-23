@@ -241,32 +241,85 @@ public class RecommendActivity extends Activity {
         });
     }
 
+    /** 点卡片：有资源库 ID 就列磁力版本，选中转存 115；否则只显示元数据。 */
     private void showDetail(final MpClient.Item item) {
         StringBuilder head = new StringBuilder();
         if (item.year != null && !item.year.isEmpty()) head.append(item.year).append("  ");
         if (item.type != null && !item.type.isEmpty()) head.append(item.type).append("  ");
         if (item.rating > 0) head.append("★ ").append(String.format("%.1f", item.rating));
         if (item.versions > 0) head.append("  ").append(item.versions).append(" 个版本");
-        String fallback = head + "\n\n" + (item.overview == null || item.overview.isEmpty()
-                ? "（暂无简介）" : item.overview);
+
         if (item.libId == null || item.libId.isEmpty()) {
-            new AlertDialog.Builder(this).setTitle(item.title).setMessage(fallback)
-                    .setPositiveButton("关闭", null).show();
+            new AlertDialog.Builder(this)
+                    .setTitle(item.title)
+                    .setMessage(head + "\n\n" + (item.overview == null || item.overview.isEmpty()
+                            ? "（暂无简介）" : item.overview)
+                            + "\n\n（本地资源库暂无这部片）")
+                    .setPositiveButton("关闭", null)
+                    .show();
             return;
         }
-        final AlertDialog dlg = new AlertDialog.Builder(this)
+        final AlertDialog loading = new AlertDialog.Builder(this)
                 .setTitle(item.title)
-                .setMessage(fallback + "\n\n正在读取资源库详情…")
-                .setPositiveButton("关闭", null)
+                .setMessage("正在读取磁力版本…")
+                .setNegativeButton("取消", null)
                 .show();
         new Thread(new Runnable() {
             @Override public void run() {
-                final String text = LibClient.detail(item.libId);
+                final java.util.List<LibClient.Mag> mags = LibClient.magnets(item.libId);
                 runOnUiThread(new Runnable() {
-                    @Override public void run() { if (text != null) dlg.setMessage(text); }
+                    @Override public void run() {
+                        loading.dismiss();
+                        if (mags.isEmpty()) {
+                            new AlertDialog.Builder(RecommendActivity.this)
+                                    .setTitle(item.title)
+                                    .setMessage(head + "\n\n（资源库里没有磁力）")
+                                    .setPositiveButton("关闭", null).show();
+                            return;
+                        }
+                        showMagnetPicker(item, mags, head.toString());
+                    }
                 });
             }
-        }, "cyt-lib-detail").start();
+        }, "cyt-lib-magnets").start();
+    }
+
+    /** 磁力版本列表：选中 → 转存 115。 */
+    private void showMagnetPicker(final MpClient.Item item,
+                                  final java.util.List<LibClient.Mag> mags,
+                                  final String head) {
+        final String[] labels = new String[mags.size()];
+        for (int i = 0; i < mags.size(); i++) labels[i] = mags.get(i).label();
+        new AlertDialog.Builder(this)
+                .setTitle(item.title + "  转存 115")
+                .setItems(labels, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        final LibClient.Mag mag = mags.get(which);
+                        final AlertDialog wait = new AlertDialog.Builder(RecommendActivity.this)
+                                .setTitle(item.title)
+                                .setMessage("正在转存到 115…")
+                                .setCancelable(false)
+                                .show();
+                        new Thread(new Runnable() {
+                            @Override public void run() {
+                                final String msg = LibClient.transfer(mag.hash);
+                                runOnUiThread(new Runnable() {
+                                    @Override public void run() {
+                                        wait.dismiss();
+                                        new AlertDialog.Builder(RecommendActivity.this)
+                                                .setTitle(item.title)
+                                                .setMessage(msg + "\n\n" + mag.label()
+                                                        + "\n\n转存后在 115（Movies 目录）里播放")
+                                                .setPositiveButton("好", null)
+                                                .show();
+                                    }
+                                });
+                            }
+                        }, "cyt-lib-transfer").start();
+                    }
+                })
+                .setNegativeButton("关闭", null)
+                .show();
     }
 
     private GradientDrawable cardBg(boolean focused) {
