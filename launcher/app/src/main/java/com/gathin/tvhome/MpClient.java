@@ -23,8 +23,12 @@ public final class MpClient {
     private static final String TAG = "CYT-MP";
     public static final String BASE = "http://192.168.31.52:3000";
     private static final String KEY = "oasHPCoFmMUARUrkSYlFrw";
-    /** PC 上的图片代理（IMGPROXY，家里电脑跑 imgproxy.py）；留空就直连。 */
-    public static final String PROXY = "http://192.168.31.28:8899/i?u=";
+    /** MoviePilot 账号：用来登录换成资源 cookie，再走它自己的图片代理（NAS 常开）。 */
+    private static final String USER = "mcdull";
+    private static final String PASS = "huangyuzhi8";
+    private static android.content.Context ctx;
+    private static String cookie;
+    private static long cookieAt;
 
     /** 墙上一张卡。 */
     public static final class Item {
@@ -209,16 +213,99 @@ public final class MpClient {
     }
 
     /** 海报位图（复用 Jellyfin 的磁盘缓存）。 */
+    public static void init(android.content.Context c) {
+        ctx = c.getApplicationContext();
+    }
+
+    /** 登录 MoviePilot，拿资源 cookie（有效期约 30 分钟）。 */
+    private static synchronized boolean ensureLogin() {
+        if (cookie != null && System.currentTimeMillis() - cookieAt < 25 * 60_000L) return true;
+        HttpURLConnection c = null;
+        try {
+            java.net.URL url = new java.net.URL(BASE + "/api/v1/login/access-token");
+            c = (HttpURLConnection) url.openConnection();
+            c.setConnectTimeout(6000);
+            c.setReadTimeout(9000);
+            c.setRequestMethod("POST");
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            java.io.OutputStream os = c.getOutputStream();
+            os.write(("username=" + java.net.URLEncoder.encode(USER, "UTF-8")
+                    + "&password=" + java.net.URLEncoder.encode(PASS, "UTF-8")).getBytes("UTF-8"));
+            os.flush(); os.close();
+            if (c.getResponseCode() != 200) { Log.w(TAG, "login http " + c.getResponseCode()); return false; }
+            String setCookie = c.getHeaderField("Set-Cookie");
+            if (setCookie == null) { Log.w(TAG, "login no cookie"); return false; }
+            int semi = setCookie.indexOf(';');
+            cookie = semi > 0 ? setCookie.substring(0, semi) : setCookie;
+            cookieAt = System.currentTimeMillis();
+            Log.i(TAG, "login ok cookie len=" + cookie.length());
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "login failed " + t);
+            return false;
+        } finally {
+            try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
+        }
+    }
+
+    /**
+     * 海报：走 MoviePilot 的图片代理（/api/v1/system/img/1），NAS 24 小时开着，
+     * 电视不需要能连外网。带磁盘缓存。
+     */
     public static Bitmap poster(String url) {
         if (url == null || url.isEmpty()) return null;
-        // 电视直连 image.tmdb.org 会被 TLS 重置，走 PC 上的图片代理（imgproxy.py）
-        if (PROXY != null && !PROXY.isEmpty()) {
-            try {
-                String proxied = PROXY + java.net.URLEncoder.encode(url, "UTF-8");
-                Bitmap b = JellyfinClient.poster(proxied, 520);
-                if (b != null) return b;
-            } catch (Throwable ignored) { }
+        java.io.File cached = cacheFile(url);
+        if (cached != null && cached.exists()) {
+            Bitmap b = android.graphics.BitmapFactory.decodeFile(cached.getAbsolutePath());
+            if (b != null) return b;
         }
-        return JellyfinClient.poster(url, 520);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            if (!ensureLogin()) return null;
+            HttpURLConnection c = null;
+            java.io.InputStream in = null;
+            try {
+                String proxied = BASE + "/api/v1/system/img/1?imgurl="
+                        + java.net.URLEncoder.encode(url, "UTF-8");
+                c = (HttpURLConnection) new java.net.URL(proxied).openConnection();
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(15000);
+                c.setRequestProperty("Cookie", cookie);
+                int code = c.getResponseCode();
+                if (code == 401) { cookie = null; continue; }          // cookie 过期，重登一次
+                if (code != 200) { Log.w(TAG, "poster http " + code); return null; }
+                in = c.getInputStream();
+                Bitmap b = android.graphics.BitmapFactory.decodeStream(in);
+                if (b != null && cached != null) save(cached, b);
+                return b;
+            } catch (Throwable t) {
+                Log.w(TAG, "poster err " + t);
+                return null;
+            } finally {
+                try { if (in != null) in.close(); } catch (Throwable ignored) { }
+                try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
+            }
+        }
+        return null;
+    }
+
+    private static java.io.File cacheFile(String url) {
+        if (ctx == null) return null;
+        try {
+            java.io.File dir = new java.io.File(ctx.getCacheDir(), "mp_posters");
+            if (!dir.exists()) dir.mkdirs();
+            String name = Integer.toHexString(url.hashCode()) + "_" + url.length() + ".img";
+            return new java.io.File(dir, name);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static void save(java.io.File f, Bitmap b) {
+        try {
+            java.io.FileOutputStream out = new java.io.FileOutputStream(f);
+            b.compress(Bitmap.CompressFormat.JPEG, 88, out);
+            out.flush(); out.close();
+        } catch (Throwable ignored) { }
     }
 }

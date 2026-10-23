@@ -16,6 +16,7 @@ public class TVDeskApp extends Application {
     public void onCreate() {
         super.onCreate();
         JellyfinClient.init(this);
+        MpClient.init(this);
         final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
             @Override public void uncaughtException(Thread t, Throwable e) {

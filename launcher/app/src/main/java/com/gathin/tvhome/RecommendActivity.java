@@ -226,7 +226,7 @@ public class RecommendActivity extends Activity {
 
     /** 海报单线程顺序下载，避免几十张同时抢带宽。 */
     private static final java.util.concurrent.ExecutorService LOADER =
-            java.util.concurrent.Executors.newSingleThreadExecutor();
+            java.util.concurrent.Executors.newFixedThreadPool(4);
 
     private void loadPoster(final ImageView view, final String url) {
         if (url == null || url.isEmpty()) return;
