@@ -743,7 +743,8 @@ public class JellyfinView extends FrameLayout {
             ov.setTextColor(0xFFC9D6DF);
             ov.setTextSize(14);
             ov.setLineSpacing(dp(5), 1f);
-            ov.setMaxLines(6);
+            // 简介全文展开，不截断（页面本身可上下滚动）
+            ov.setMaxLines(Integer.MAX_VALUE);
             LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             olp.topMargin = dp(14);
