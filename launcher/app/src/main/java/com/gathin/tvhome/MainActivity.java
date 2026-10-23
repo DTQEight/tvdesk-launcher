@@ -1197,9 +1197,43 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         shelfCells[1].setNextFocusUpId(tabsRight[1].getId());
         shelfCells[2].setNextFocusUpId(tabsRight[0].getId());
         shelfCells[3].setNextFocusUpId(tabsRight[1].getId());
+
+        // 右边缘（待定 tab / 田字格右列）再按右键 → 翻到推荐页
+        bindRightEdge(tabsRight[1]);
+        bindRightEdge(shelfCells[1]);
+        bindRightEdge(shelfCells[3]);
+        bindRightEdge(shelfCells[0]);
     }
 
     /** 一个 tab：标题 + 可选副标题（集数/进度），整体可聚焦。 */
+    /** 右边缘再按右键：翻到推荐页。 */
+    /** 右边缘控件集合；在这些控件上再按右键就翻到推荐页。 */
+    private final java.util.Set<Integer> rightEdgeIds = new java.util.HashSet<>();
+    private boolean recommendOpening;
+
+    private void bindRightEdge(final View v) {
+        if (v == null) return;
+        rightEdgeIds.add(v.getId());
+    }
+
+    private void openRecommend() {
+        try {
+            if (recommendOpening) return;
+            recommendOpening = true;
+            startActivity(new Intent(this, RecommendActivity.class));
+            overridePendingTransition(0, 0);
+            handler.postDelayed(new Runnable() {
+                @Override public void run() { recommendOpening = false; }
+            }, 1200);
+        } catch (Throwable t) {
+            recommendOpening = false;
+            android.util.Log.w("CYT-MP", "openRecommend failed " + t);
+        }
+    }
+
+
+
+
     private LinearLayout addTab(LinearLayout parent, String title, String sub, final Runnable action) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -1637,6 +1671,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            View rf = getCurrentFocus();
+            if (rf != null && rightEdgeIds.contains(rf.getId())) {
+                openRecommend();
+                return true;
+            }
+        }
         if (handleSettingsKey(event)) return true;
         if (!reordering) return super.dispatchKeyEvent(event);
         if (dockEditing) return dispatchDockEdit(event);

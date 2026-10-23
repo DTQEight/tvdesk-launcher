@@ -149,6 +149,11 @@
                 android:resource="@xml/input_key_service" />
         </service>
             <activity
+            android:name=".RecommendActivity"
+            android:exported="false"
+            />
+
+        <activity
             android:name=".LivePlayerActivity"
             android:exported="true"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"

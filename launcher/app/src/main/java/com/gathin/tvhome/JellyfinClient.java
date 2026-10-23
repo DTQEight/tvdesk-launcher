@@ -189,7 +189,8 @@ public final class JellyfinClient {
         try {
             c = open(url);
             c.setRequestProperty("Accept", "image/*");
-            if (c.getResponseCode() != 200) return null;
+            int code1 = c.getResponseCode();
+            if (code1 != 200) { android.util.Log.w("CYT-JF", "poster http " + code1 + " " + url); return null; }
             in = c.getInputStream();
             // 先按目标高度采样，避免整张大图进内存
             BitmapFactory.Options bounds = new BitmapFactory.Options();
@@ -209,6 +210,7 @@ public final class JellyfinClient {
             savePosterCache(url, out);
             return out;
         } catch (Throwable t) {
+            android.util.Log.w("CYT-JF", "poster err " + t + " url=" + url);
             Log.e(TAG, "poster failed " + t);
             return null;
         } finally {
