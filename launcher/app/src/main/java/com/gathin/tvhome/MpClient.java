@@ -117,101 +117,6 @@ public final class MpClient {
     }
 
 
-    private static void add(Section sec, String keyword) {
-        Item it = searchOne(keyword);
-        if (it == null) return;
-        // 电视连不上 image.tmdb.org（TCP 被重置），改从 Jellyfin 取同名片的海报（走局域网）
-        String jf = jellyfinPoster(it.title, it.year);
-        if (jf == null) return;                       // 本地没有就不用，免得卡片空着
-        sec.items.add(new Item(it.title, it.year, it.type, jf, it.overview, it.rating));
-    }
-
-    /** 在 Jellyfin 里按标题找同一部片，返回它的海报地址；找不到返回 null。 */
-    public static String jellyfinPoster(String title, String year) {
-        if (title == null || title.trim().isEmpty()) return null;
-        HttpURLConnection c = null;
-        BufferedReader r = null;
-        try {
-            String q = URLEncoder.encode(title, "UTF-8");
-            java.net.URL url = new java.net.URL(JellyfinClient.BASE + "/Items?searchTerm=" + q
-                    + "&IncludeItemTypes=Series,Movie&Recursive=true&Limit=1&Fields=ImageTags,ProductionYear");
-            c = (HttpURLConnection) url.openConnection();
-            c.setConnectTimeout(6000);
-            c.setReadTimeout(9000);
-            c.setRequestProperty("Authorization", "MediaBrowser Token=\"" + JellyfinClient.TOKEN + "\"");
-            if (c.getResponseCode() != 200) return null;
-            r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = r.readLine()) != null) sb.append(line);
-            JSONObject root = new JSONObject(sb.toString());
-            JSONArray arr = root.optJSONArray("Items");
-            if (arr == null || arr.length() == 0) return null;
-            JSONObject it = arr.getJSONObject(0);
-            JSONObject tags = it.optJSONObject("ImageTags");
-            if (tags == null || !tags.has("Primary")) return null;
-            String id = it.optString("Id", "");
-            if (id.isEmpty()) return null;
-            return JellyfinClient.BASE + "/Items/" + id + "/Images/Primary?maxHeight=520&quality=90";
-        } catch (Throwable t) {
-            Log.w(TAG, "jellyfinPoster failed " + title + " " + t);
-            return null;
-        } finally {
-            try { if (r != null) r.close(); } catch (Throwable ignored) { }
-            try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
-        }
-    }
-
-    /** 搜一个关键词，取第一条有海报的。 */
-    public static Item searchOne(String keyword) {
-        List<Item> list = search(keyword, 6);
-        for (Item i : list) {
-            if (i.poster != null && !i.poster.isEmpty()) return i;
-        }
-        return list.isEmpty() ? null : list.get(0);
-    }
-
-    public static List<Item> search(String keyword, int limit) {
-        List<Item> out = new ArrayList<>();
-        HttpURLConnection c = null;
-        BufferedReader r = null;
-        try {
-            String q = URLEncoder.encode(keyword, "UTF-8");
-            URL url = new URL(BASE + "/api/v1/media/search?title=" + q);
-            c = (HttpURLConnection) url.openConnection();
-            c.setConnectTimeout(8000);
-            c.setReadTimeout(12000);
-            c.setRequestProperty("X-API-Key", KEY);
-            c.setInstanceFollowRedirects(true);
-            int code = c.getResponseCode();
-            if (code != 200) { Log.w(TAG, "search http " + code + " for " + keyword); return out; }
-            r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = r.readLine()) != null) sb.append(line);
-            JSONObject root = new JSONObject(sb.toString());
-            JSONArray arr = root.optJSONArray("data");
-            if (arr == null) return out;
-            for (int i = 0; i < arr.length() && i < limit; i++) {
-                JSONObject o = arr.getJSONObject(i);
-                out.add(new Item(
-                        o.optString("title", ""),
-                        o.optString("year", ""),
-                        o.optString("type", ""),
-                        o.optString("poster_path", ""),
-                        o.optString("overview", ""),
-                        o.optDouble("vote_average", 0)));
-            }
-        } catch (Throwable t) {
-            Log.w(TAG, "search failed " + keyword + " " + t);
-        } finally {
-            try { if (r != null) r.close(); } catch (Throwable ignored) { }
-            try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
-        }
-        return out;
-    }
-
-    /** 海报位图（复用 Jellyfin 的磁盘缓存）。 */
     public static void init(android.content.Context c) {
         ctx = c.getApplicationContext();
     }
@@ -230,7 +135,6 @@ public final class MpClient {
         }
         // 1) 走代理直连图床（TMDB / 豆瓣）
         Bitmap b = fetchDirect(url);
-        // 2) 代理不通时，兜底用 MoviePilot 的图片代理
         // 代理没开就没有海报（片名/评分照常显示）
         if (b != null && cached != null) save(cached, b);
         return b;
@@ -241,8 +145,24 @@ public final class MpClient {
         HttpURLConnection c = null;
         java.io.InputStream in = null;
         try {
+            if (ctx != null && !TVDeskPrefs.proxyOn(ctx)) {
+                // 设置里关了代理：直连（一般会失败，只当调试用）
+                c = (HttpURLConnection) new java.net.URL(url).openConnection();
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(15000);
+                c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36");
+                c.setRequestProperty("Referer", url.contains("doubanio")
+                        ? "https://movie.douban.com/" : "https://www.themoviedb.org/");
+                int code0 = c.getResponseCode();
+                if (code0 != 200) { Log.w(TAG, "direct http " + code0); return null; }
+                in = c.getInputStream();
+                return android.graphics.BitmapFactory.decodeStream(in);
+            }
+            String ph = ctx == null ? PROXY_HOST : TVDeskPrefs.proxyHost(ctx);
+            int pp = ctx == null ? PROXY_PORT : TVDeskPrefs.proxyPort(ctx);
             java.net.Proxy proxy = new java.net.Proxy(java.net.Proxy.Type.HTTP,
-                    new java.net.InetSocketAddress(PROXY_HOST, PROXY_PORT));
+                    new java.net.InetSocketAddress(ph, pp));
             c = (HttpURLConnection) new java.net.URL(url).openConnection(proxy);
             c.setConnectTimeout(8000);
             c.setReadTimeout(15000);

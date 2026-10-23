@@ -129,7 +129,7 @@ public final class LauncherSettingsActivity extends Activity {
             LinearLayout root = (LinearLayout) sv.getChildAt(0);
 
             final TextView row = new TextView(this);
-            row.setText("▶ TVDesk 设置（背景轮播 / 天气定位 / 直播预览）");
+            row.setText("▶ TVDesk 设置（背景 / 天气 / 预览 / 图片代理）");
             row.setTextSize(18);
             row.setPadding(24, 26, 24, 26);
             row.setFocusable(true);
@@ -196,7 +196,10 @@ public final class LauncherSettingsActivity extends Activity {
                 "背景随机轮播：" + (p.getBoolean(TVDeskPrefs.KEY_BACKDROP, true) ? "开" : "关"),
                 "轮播间隔：" + (p.getInt(TVDeskPrefs.KEY_INTERVAL, 30000) / 1000) + " 秒",
                 "天气定位：" + (p.getBoolean(TVDeskPrefs.KEY_WEATHER_HOME, false) ? "固定佛山顺德" : "跟随 IP"),
-                "直播预览：" + (p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true) ? "开" : "关")
+                "直播预览：" + (p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true) ? "开" : "关"),
+                "推荐页图片代理：" + (p.getBoolean(TVDeskPrefs.KEY_PROXY_ON, true) ? "开" : "关"),
+                "代理地址：" + p.getString(TVDeskPrefs.KEY_PROXY_HOST, "192.168.31.1"),
+                "代理端口：" + p.getInt(TVDeskPrefs.KEY_PROXY_PORT, 7890)
         };
         new AlertDialog.Builder(this)
                 .setTitle("TVDesk 设置")
@@ -220,11 +223,61 @@ public final class LauncherSettingsActivity extends Activity {
                             p.edit().putBoolean(TVDeskPrefs.KEY_PREVIEW,
                                     !p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true)).apply();
                             break;
+                        case 4:
+                            p.edit().putBoolean(TVDeskPrefs.KEY_PROXY_ON,
+                                    !p.getBoolean(TVDeskPrefs.KEY_PROXY_ON, true)).apply();
+                            break;
+                        case 5:
+                            editProxyHost();
+                            return;
+                        case 6:
+                            editProxyPort();
+                            return;
                     }
                     Toast.makeText(this, "已保存，回桌面生效", Toast.LENGTH_SHORT).show();
                     showTvDeskDialog();
                 })
                 .setNegativeButton("关闭", null)
+                .show();
+    }
+
+    /** 改代理地址（用遥控器在弹窗里输入 IP）。 */
+    private void editProxyHost() {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setText(TVDeskPrefs.proxyHost(this));
+        input.setSelection(input.getText().length());
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this)
+                .setTitle("代理地址（如 192.168.31.1）")
+                .setView(input)
+                .setPositiveButton("保存", (d, w) -> {
+                    String v = input.getText().toString().trim();
+                    if (!v.isEmpty()) {
+                        TVDeskPrefs.get(this).edit().putString(TVDeskPrefs.KEY_PROXY_HOST, v).apply();
+                    }
+                    showTvDeskDialog();
+                })
+                .setNegativeButton("取消", (d, w) -> showTvDeskDialog())
+                .show();
+    }
+
+    /** 改代理端口。 */
+    private void editProxyPort() {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setText(String.valueOf(TVDeskPrefs.proxyPort(this)));
+        input.setSelection(input.getText().length());
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        new AlertDialog.Builder(this)
+                .setTitle("代理端口（如 7890）")
+                .setView(input)
+                .setPositiveButton("保存", (d, w) -> {
+                    try {
+                        int port = Integer.parseInt(input.getText().toString().trim());
+                        TVDeskPrefs.get(this).edit().putInt(TVDeskPrefs.KEY_PROXY_PORT, port).apply();
+                    } catch (Throwable ignored) { }
+                    showTvDeskDialog();
+                })
+                .setNegativeButton("取消", (d, w) -> showTvDeskDialog())
                 .show();
     }
 
