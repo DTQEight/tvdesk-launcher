@@ -35,6 +35,7 @@ public class JellyfinView extends FrameLayout {
     private LinearLayout libContent;
     private TextView libTitle, libBack;
     private boolean libOpen;
+    private final List<List<View>> rows = new ArrayList<>();
     private View lastFocused;
     private final java.util.concurrent.ExecutorService loader =
             java.util.concurrent.Executors.newFixedThreadPool(4);
@@ -154,6 +155,7 @@ public class JellyfinView extends FrameLayout {
             for (JellyfinClient.Card c : list) cards.add(posterCard(c));
             addRow(cards);
         }
+        wireFocus(rows);
         if (firstFocus != null) firstFocus.requestFocus();
     }
 
@@ -177,7 +179,32 @@ public class JellyfinView extends FrameLayout {
     }
 
     /** 加一横行（可左右滚动）。 */
+    /** 把每行卡片左右串起来，上下按列对齐，避免焦点乱跳。 */
+    private void wireFocus(List<List<View>> rs) {
+        for (int r = 0; r < rs.size(); r++) {
+            List<View> row = rs.get(r);
+            for (int i = 0; i < row.size(); i++) {
+                View c = row.get(i);
+                if (i + 1 < row.size()) c.setNextFocusRightId(row.get(i + 1).getId());
+                if (i > 0) c.setNextFocusLeftId(row.get(i - 1).getId());
+                if (r + 1 < rs.size()) {
+                    List<View> next = rs.get(r + 1);
+                    if (!next.isEmpty()) {
+                        c.setNextFocusDownId(next.get(Math.min(i, next.size() - 1)).getId());
+                    }
+                }
+                if (r > 0) {
+                    List<View> prev = rs.get(r - 1);
+                    if (!prev.isEmpty()) {
+                        c.setNextFocusUpId(prev.get(Math.min(i, prev.size() - 1)).getId());
+                    }
+                }
+            }
+        }
+    }
+
     private void addRow(List<View> cards) {
+        rows.add(cards);
         LinearLayout inner = new LinearLayout(ctx);
         inner.setOrientation(LinearLayout.HORIZONTAL);
         for (View c : cards) inner.addView(c);
@@ -423,6 +450,7 @@ public class JellyfinView extends FrameLayout {
             return;
         }
         final int perRow = 6;
+        final java.util.List<java.util.List<View>> grid = new ArrayList<>();
         LinearLayout row = null;
         for (int i = 0; i < items.size(); i++) {
             if (i % perRow == 0) {
@@ -432,11 +460,13 @@ public class JellyfinView extends FrameLayout {
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 rlp.topMargin = dp(10);
                 libContent.addView(row, rlp);
+                grid.add(new ArrayList<View>());
             }
             View card = posterCard(items.get(i));
+            if (!grid.isEmpty()) grid.get(grid.size() - 1).add(card);
             if (row != null) row.addView(card);
         }
-        // 焦点放到第一个海报（返回按钮已聚焦，这里不抢）
+        wireFocus(grid);
     }
 
     public boolean isLibraryOpen() { return libOpen; }
