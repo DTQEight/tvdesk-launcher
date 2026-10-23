@@ -223,6 +223,10 @@ public final class JellyfinClient {
         public final String id, title, sub, posterUrl, backdropUrl;
         /** Movie / Series / Episode，播放时用来区分。 */
         public String type = "";
+        /** 16:9 横图（剧照/单集截图）。 */
+        public String landscapeUrl = "";
+        /** 观看进度 0-100。 */
+        public double progress;
         public Card(String id, String title, String sub, String posterUrl, String backdropUrl) {
             this.id = id; this.title = title; this.sub = sub;
             this.posterUrl = posterUrl; this.backdropUrl = backdropUrl;
@@ -276,6 +280,7 @@ public final class JellyfinClient {
                     + (tag == null ? "" : "&tag=" + tag);
             Card card = new Card(id, name, year > 0 ? String.valueOf(year) : "", poster, null);
             card.type = it.optString("Type", "");
+            card.landscapeUrl = BASE + "/Items/" + id + "/Images/Backdrop/0?maxWidth=960&quality=90";
             out.add(card);
         }
         return out;
@@ -303,6 +308,7 @@ public final class JellyfinClient {
                     + (tag == null ? "" : "&tag=" + tag);
             Card card = new Card(id, name, year > 0 ? String.valueOf(year) : "", poster, null);
             card.type = it.optString("Type", "");
+            card.landscapeUrl = BASE + "/Items/" + id + "/Images/Backdrop/0?maxWidth=960&quality=90";
             out.add(card);
         }
         return out;
@@ -343,6 +349,8 @@ public final class JellyfinClient {
             String sub = pr > 0 ? (Math.round(pr) + "%") : "";
             Card card = new Card(id, title, sub, poster, null);
             card.type = type;
+            card.landscapeUrl = BASE + "/Items/" + id + "/Images/Primary?maxHeight=540&quality=90";
+            card.progress = pr;
             out.add(card);
         }
         return out;
