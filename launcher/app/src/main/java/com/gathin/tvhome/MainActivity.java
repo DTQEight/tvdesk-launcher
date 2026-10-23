@@ -98,6 +98,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private View pageTabBar;
     private androidx.viewpager2.widget.ViewPager2 pager;
     private RecommendView recommendView;
+    private JellyfinView jellyfinView;
+    private View pageTabLib;
+    private int currentPage;
 
     private static final int LAUNCHER_SETTINGS_REQUEST = 42;
     /** Sent by QuickSettingsActivity: open Launcher settings from here so Home rebuilds when they close. */
@@ -1170,7 +1173,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             pager.setOffscreenPageLimit(1);
             pager.setAdapter(new androidx.recyclerview.widget.RecyclerView.Adapter<
                     androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
-                @Override public int getItemCount() { return 2; }
+                @Override public int getItemCount() { return 3; }
                 @Override public int getItemViewType(int position) { return position; }
 
                 @Override public androidx.recyclerview.widget.RecyclerView.ViewHolder onCreateViewHolder(
@@ -1182,6 +1185,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT));
                         return new androidx.recyclerview.widget.RecyclerView.ViewHolder(v) { };
+                    }
+                    if (viewType == 2) {
+                        jellyfinView = new JellyfinView(MainActivity.this);
+                        if (currentBackdrop != null) jellyfinView.setBackdrop(currentBackdrop);
+                        jellyfinView.setLayoutParams(new android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+                        return new androidx.recyclerview.widget.RecyclerView.ViewHolder(jellyfinView) { };
                     }
                     recommendView = new RecommendView(MainActivity.this);
                     recommendView.setLayoutParams(new android.view.ViewGroup.LayoutParams(
@@ -1200,7 +1211,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             pager.registerOnPageChangeCallback(
                     new androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
                         @Override public void onPageSelected(int position) {
-                            setPageTabSelected(position == 1);
+                            currentPage = position;
+                            setPageTabSelected(position);
                             // 切到推荐页：停掉直播预览，省解码器和流量
                             if (position == 1) {
                                 if (livePreview != null) livePreview.stop();
@@ -1211,6 +1223,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                                         && liveSurface.getHolder().getSurface().isValid()) {
                                     startLive(liveSurface.getHolder());
                                 }
+                            if (jellyfinView != null && currentBackdrop != null) jellyfinView.setBackdrop(currentBackdrop);
                             }
                             if (position == 1 && recommendView != null) {
                                 recommendView.focusFirst();
@@ -1262,6 +1275,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         lp1.rightMargin = dp(10);
         bar.addView(home, lp1);
         bar.addView(rec, new LinearLayout.LayoutParams(dp(110), dp(42)));
+        final View lib = pageChip("影视", false);
+        LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(dp(96), dp(42));
+        lp3.leftMargin = dp(10);
+        bar.addView(lib, lp3);
 
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
@@ -1291,7 +1308,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         pageTabHome = home;
         pageTabRec = rec;
+        pageTabLib = lib;
         home.setNextFocusRightId(rec.getId());
+        rec.setNextFocusRightId(lib.getId());
+        lib.setNextFocusLeftId(rec.getId());
         rec.setNextFocusLeftId(home.getId());
         if (tabsLeft[0] != null) {
             home.setNextFocusDownId(tabsLeft[0].getId());
@@ -1299,6 +1319,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         home.setOnClickListener(v -> showHomePage());
         rec.setOnClickListener(v -> openRecommend());
+        lib.setOnClickListener(v -> openLibrary());
     }
 
     /** 一个页面 tab 芯片。 */
@@ -1430,7 +1451,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (recommendView != null) handler.postDelayed(new Runnable() {
                 @Override public void run() { recommendView.focusFirst(); }
             }, 260L);
-            setPageTabSelected(true);
+            setPageTabSelected(1);
         } catch (Throwable t) {
             android.util.Log.w("CYT-MP", "openRecommend failed " + t);
         }
@@ -1439,29 +1460,45 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** 切回主页。 */
     private void showHomePage() {
         if (pager != null) pager.setCurrentItem(0, true);
-        setPageTabSelected(false);
+        setPageTabSelected(0);
         if (pageTabHome != null) handler.postDelayed(new Runnable() {
             @Override public void run() { pageTabHome.requestFocus(); }
         }, 260L);
     }
 
     /** 顶部 tab 选中态跟着页面走。 */
-    private void setPageTabSelected(boolean recommend) {
-        pageIsRecommend = recommend;
-        if (topScrim != null) topScrim.setVisibility(recommend ? View.VISIBLE : View.GONE);
+    private void setPageTabSelected(int page) {
+        pageIsRecommend = page == 1;
+        currentPage = page;
+        if (topScrim != null) topScrim.setVisibility(page == 0 ? View.GONE : View.VISIBLE);
+        boolean isLib = page == 2;
         if (pageTabHome != null) {
-            pageTabHome.setBackground(pageChipBg(!recommend, false));
-            ((TextView) pageTabHome).setTextColor(recommend ? 0xFFE6EEF5 : 0xFF0B1116);
+            pageTabHome.setBackground(pageChipBg(page == 0, false));
+            ((TextView) pageTabHome).setTextColor(page == 0 ? 0xFF0B1116 : 0xFFE6EEF5);
         }
         if (pageTabRec != null) {
-            pageTabRec.setBackground(pageChipBg(recommend, false));
-            ((TextView) pageTabRec).setTextColor(recommend ? 0xFF0B1116 : 0xFFE6EEF5);
+            pageTabRec.setBackground(pageChipBg(page == 1, false));
+            ((TextView) pageTabRec).setTextColor(page == 1 ? 0xFF0B1116 : 0xFFE6EEF5);
+        }
+        if (pageTabLib != null) {
+            pageTabLib.setBackground(pageChipBg(page == 2, false));
+            ((TextView) pageTabLib).setTextColor(page == 2 ? 0xFF0B1116 : 0xFFE6EEF5);
         }
     }
 
-
-
-
+    /** 切到影视库页。 */
+    private void openLibrary() {
+        try {
+            if (pager == null) return;
+            pager.setCurrentItem(2, true);
+            setPageTabSelected(2);
+            if (jellyfinView != null) handler.postDelayed(new Runnable() {
+                @Override public void run() { jellyfinView.focusFirst(); }
+            }, 260L);
+        } catch (Throwable t) {
+            android.util.Log.w("CYT-JF", "openLibrary failed " + t);
+        }
+    }
     private LinearLayout addTab(LinearLayout parent, String title, String sub, final Runnable action) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -1912,17 +1949,21 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
             return true;
         }
-        // 在推荐页时，别让焦点跑回主页；在主页时也别跑到看不见的推荐页
+        // 在推荐页/影视页时，别让焦点跑回主页；在主页时也别跑到看不见的页
         if (pager != null && event.getAction() == KeyEvent.ACTION_DOWN) {
             View cur = getCurrentFocus();
-            if (pager.getCurrentItem() == 1) {
-                if (cur == null || !isInside(cur, recommendView)) {
-                    if (recommendView != null) recommendView.focusFirst();
+            int page = pager.getCurrentItem();
+            if (page == 1 || page == 2) {
+                View pageView = page == 1 ? recommendView : jellyfinView;
+                if (cur == null || !isInside(cur, pageView)) {
+                    if (page == 1 && recommendView != null) recommendView.focusFirst();
+                    else if (page == 2 && jellyfinView != null) jellyfinView.focusFirst();
                     return true;
                 }
-            } else {
-                if (cur != null && recommendView != null && isInside(cur, recommendView)) {
-                    if (pageTabRec != null) pageTabRec.requestFocus();
+            } else if (cur != null) {
+                if ((recommendView != null && isInside(cur, recommendView))
+                        || (jellyfinView != null && isInside(cur, jellyfinView))) {
+                    if (pageTabHome != null) pageTabHome.requestFocus();
                     return true;
                 }
             }

@@ -218,6 +218,103 @@ public final class JellyfinClient {
             try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
         }
     }
+    /** 详情页/库页通用卡片：海报 + 标题 + 副标题。 */
+    public static final class Card {
+        public final String id, title, sub, posterUrl, backdropUrl;
+        public Card(String id, String title, String sub, String posterUrl, String backdropUrl) {
+            this.id = id; this.title = title; this.sub = sub;
+            this.posterUrl = posterUrl; this.backdropUrl = backdropUrl;
+        }
+    }
+
+    /** 我的媒体（Jellyfin 的各个库）。 */
+    public static java.util.List<Card> views() {
+        java.util.List<Card> out = new java.util.ArrayList<>();
+        JSONObject o = getJson(BASE + "/Users/" + USER_ID + "/Views");
+        if (o == null) return out;
+        JSONArray arr = o.optJSONArray("Items");
+        if (arr == null) return out;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject it = arr.optJSONObject(i);
+            if (it == null) continue;
+            String id = it.optString("Id", "");
+            String name = it.optString("Name", "");
+            if (id.isEmpty() || name.isEmpty()) continue;
+            JSONObject tags = it.optJSONObject("ImageTags");
+            String tag = tags == null ? null : tags.optString("Primary", null);
+            String poster = BASE + "/Items/" + id + "/Images/Primary?maxHeight=720&quality=90"
+                    + (tag == null ? "" : "&tag=" + tag);
+            String back = BASE + "/Items/" + id + "/Images/Backdrop/0?maxWidth=1280&quality=90";
+            out.add(new Card(id, name, it.optString("CollectionType", ""), poster, back));
+        }
+        return out;
+    }
+
+    /** 某个库最近添加的影片/剧集。 */
+    public static java.util.List<Card> latest(String libraryId, int limit) {
+        java.util.List<Card> out = new java.util.ArrayList<>();
+        String url = BASE + "/Items?ParentId=" + libraryId + "&Recursive=true"
+                + "&IncludeItemTypes=Movie,Series&SortBy=DateCreated&SortOrder=Descending"
+                + "&Limit=" + limit + "&Fields=ProductionYear,ImageTags,UserData";
+        JSONObject o = getJson(url);
+        if (o == null) return out;
+        JSONArray arr = o.optJSONArray("Items");
+        if (arr == null) return out;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject it = arr.optJSONObject(i);
+            if (it == null) continue;
+            String id = it.optString("Id", "");
+            String name = it.optString("Name", "");
+            if (id.isEmpty()) continue;
+            JSONObject tags = it.optJSONObject("ImageTags");
+            String tag = tags == null ? null : tags.optString("Primary", null);
+            int year = it.optInt("ProductionYear", 0);
+            String poster = BASE + "/Items/" + id + "/Images/Primary?maxHeight=720&quality=90"
+                    + (tag == null ? "" : "&tag=" + tag);
+            out.add(new Card(id, name, year > 0 ? String.valueOf(year) : "", poster, null));
+        }
+        return out;
+    }
+
+    /** 继续观看（带进度百分比）。 */
+    public static java.util.List<Card> resumeCards(int limit) {
+        java.util.List<Card> out = new java.util.ArrayList<>();
+        String url = BASE + "/Users/" + USER_ID + "/Items/Resume?Limit=" + limit
+                + "&MediaTypes=Video&Fields=ProductionYear,SeriesId,SeriesPrimaryImageTag,UserData";
+        JSONObject o = getJson(url);
+        if (o == null) return out;
+        JSONArray arr = o.optJSONArray("Items");
+        if (arr == null) return out;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject it = arr.optJSONObject(i);
+            if (it == null) continue;
+            String id = it.optString("Id", "");
+            if (id.isEmpty()) continue;
+            String type = it.optString("Type", "");
+            String seriesId = it.optString("SeriesId", "");
+            String tag = it.optString("SeriesPrimaryImageTag", "");
+            String imgId = (seriesId == null || seriesId.isEmpty()) ? id : seriesId;
+            String poster = BASE + "/Items/" + imgId + "/Images/Primary?maxHeight=720&quality=90"
+                    + (tag == null || tag.isEmpty() ? "" : "&tag=" + tag);
+            String title;
+            if ("Episode".equals(type)) {
+                int s = it.optInt("ParentIndexNumber", 0);
+                int e = it.optInt("IndexNumber", 0);
+                String seriesName = it.optString("SeriesName", "");
+                title = seriesName.isEmpty() ? it.optString("Name", "") : seriesName;
+                if (s > 0 && e > 0) title = title + "  S" + s + "E" + e;
+            } else {
+                title = it.optString("Name", "");
+            }
+            JSONObject ud = it.optJSONObject("UserData");
+            double pr = ud == null ? 0 : ud.optDouble("PlayedPercentage", 0);
+            String sub = pr > 0 ? (Math.round(pr) + "%") : "";
+            out.add(new Card(id, title, sub, poster, null));
+        }
+        return out;
+    }
+
+
     public static final String USER_ID = "cebd8acb17734b7190f3e731c0e78301";
 
     /** 第几集开始播：优先「继续观看」，否则第一集。返回 {itemId, 标题}，失败返回 null。 */
