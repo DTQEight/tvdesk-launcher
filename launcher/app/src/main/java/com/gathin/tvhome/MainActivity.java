@@ -1507,16 +1507,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** 切到影视库页。 */
     private void openLibrary() {
         try {
-            if (pager == null) return;
-            pager.setCurrentItem(2, true);
-            setPageTabSelected(2);
-            if (jellyfinView != null) handler.postDelayed(new Runnable() {
-                @Override public void run() { jellyfinView.focusFirst(); }
-            }, 260L);
+            startActivity(new android.content.Intent(this, JellyfinActivity.class));
         } catch (Throwable t) {
             android.util.Log.w("CYT-JF", "openLibrary failed " + t);
         }
     }
+
     private LinearLayout addTab(LinearLayout parent, String title, String sub, final Runnable action) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -1996,17 +1992,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (pageTabLib != null) pageTabLib.requestFocus();
             return true;
         }
-        // 在 tab 上按 ↓：回到影视页
-        if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
-                && event.getAction() == KeyEvent.ACTION_DOWN
-                && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN) {
-            View cf = getCurrentFocus();
-            if (cf == pageTabHome || cf == pageTabRec || cf == pageTabLib) {
-                jellyfinView.setTabsFocused(false);
-                jellyfinView.focusFirst();
-                return true;
-            }
-        }        // 影视页：方向键/OK 全部交给页面自己处理，必须先于焦点守卫，否则按键会被吞掉
+        // 影视页：方向键/OK 全部交给页面自己处理（页面内部维护选择状态）
         if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
                 && event.getAction() == KeyEvent.ACTION_DOWN
                 && jellyfinView.handleKey(event.getKeyCode())) {

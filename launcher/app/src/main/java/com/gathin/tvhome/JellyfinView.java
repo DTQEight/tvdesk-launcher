@@ -53,6 +53,13 @@ public class JellyfinView extends FrameLayout {
     private boolean libOpen;
     /** 顶部 tab 接管焦点时，影视页不再吃按键、也不画选中框。 */
     private boolean tabsFocused;
+
+    /** 页面把光标交回顶部 tab 时回调。 */
+    public interface Listener { void onExitToTabs(); }
+
+    private Listener listener;
+
+    public void setListener(Listener l) { listener = l; }
     private boolean detailOpen;
 
     private final List<JellyfinClient.Card> views = new ArrayList<>();
@@ -453,7 +460,19 @@ public class JellyfinView extends FrameLayout {
     }
 
     public boolean handleKey(int keyCode) {
-        if (tabsFocused) return false;
+        if (tabsFocused) {
+            if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT
+                    || keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return false;                       // 左右交给系统，在顶部 tab 之间走
+            }
+            if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
+                tabsFocused = false;                // ↓ 回到页面
+                mode = MODE_RAIL;
+                highlight();
+                return true;
+            }
+            return true;                            // 别的键吃掉，别让焦点跑进页面
+        }
         if (keyCode != android.view.KeyEvent.KEYCODE_DPAD_LEFT
                 && keyCode != android.view.KeyEvent.KEYCODE_DPAD_RIGHT
                 && keyCode != android.view.KeyEvent.KEYCODE_DPAD_UP
@@ -884,6 +903,21 @@ public class JellyfinView extends FrameLayout {
         tv.setTextColor(0xFFE6EEF5);
         tv.setBackground(chipBg(false));
         return tv;
+    }
+
+    /** 递归把子控件都设成不可聚焦，系统焦点就不会跑进页面里。 */
+    private void disableFocus(View v) {
+        v.setFocusable(false);
+        v.setFocusableInTouchMode(false);
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) disableFocus(g.getChildAt(i));
+        }
+    }
+
+    /** 每次渲染后调用，页面内不保留任何可聚焦控件。 */
+    public void lockFocus() {
+        disableFocus(this);
     }
 
     private int dp(float v) {
