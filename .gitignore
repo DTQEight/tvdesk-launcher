@@ -9,3 +9,4 @@ launcher/local.properties
 desk.json
 desk.local.json
 *.apk
+!tools/sysprobe/sysprobe.apk
