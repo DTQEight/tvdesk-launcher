@@ -196,10 +196,10 @@ public final class LauncherSettingsActivity extends Activity {
                 "背景随机轮播：" + (p.getBoolean(TVDeskPrefs.KEY_BACKDROP, true) ? "开" : "关"),
                 "轮播间隔：" + (p.getInt(TVDeskPrefs.KEY_INTERVAL, 30000) / 1000) + " 秒",
                 "天气定位：" + (p.getBoolean(TVDeskPrefs.KEY_WEATHER_HOME, false) ? "固定佛山顺德" : "跟随 IP"),
-                "直播预览：" + (p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true) ? "开" : "关"),
                 "推荐页图片代理：" + (p.getBoolean(TVDeskPrefs.KEY_PROXY_ON, true) ? "开" : "关"),
                 "代理地址：" + p.getString(TVDeskPrefs.KEY_PROXY_HOST, "192.168.31.1"),
-                "代理端口：" + p.getInt(TVDeskPrefs.KEY_PROXY_PORT, 7890)
+                "代理端口：" + p.getInt(TVDeskPrefs.KEY_PROXY_PORT, 7890),
+                "服务接入：" + (DeskConfig.hasJellyfin() || DeskConfig.hasRecommend() || DeskConfig.hasLive() ? "已配置 ›" : "未配置 ›")
         };
         new AlertDialog.Builder(this)
                 .setTitle("TVDesk 设置")
@@ -220,18 +220,17 @@ public final class LauncherSettingsActivity extends Activity {
                                     !p.getBoolean(TVDeskPrefs.KEY_WEATHER_HOME, false)).apply();
                             break;
                         case 3:
-                            p.edit().putBoolean(TVDeskPrefs.KEY_PREVIEW,
-                                    !p.getBoolean(TVDeskPrefs.KEY_PREVIEW, true)).apply();
-                            break;
-                        case 4:
                             p.edit().putBoolean(TVDeskPrefs.KEY_PROXY_ON,
                                     !p.getBoolean(TVDeskPrefs.KEY_PROXY_ON, true)).apply();
                             break;
-                        case 5:
+                        case 4:
                             editProxyHost();
                             return;
-                        case 6:
+                        case 5:
                             editProxyPort();
+                            return;
+                        case 6:
+                            showServicesDialog();
                             return;
                     }
                     Toast.makeText(this, "已保存，回桌面生效", Toast.LENGTH_SHORT).show();
@@ -278,6 +277,81 @@ public final class LauncherSettingsActivity extends Activity {
                     showTvDeskDialog();
                 })
                 .setNegativeButton("取消", (d, w) -> showTvDeskDialog())
+                .show();
+    }
+
+    /** 服务接入：Jellyfin / MoviePilot / 2bt0 / 直播源，填了才启用对应页面。 */
+    private void showServicesDialog() {
+        DeskConfig.load(this);
+        final String[] items = {
+                "Jellyfin 地址：" + shown(DeskConfig.jfBase, "未配置"),
+                "Jellyfin 令牌：" + (DeskConfig.jfToken.isEmpty() ? "未配置" : "已填"),
+                "Jellyfin 用户 ID：" + shown(DeskConfig.jfUser, "未配置"),
+                "MoviePilot 地址：" + shown(DeskConfig.mpBase, "未配置"),
+                "MoviePilot Key：" + (DeskConfig.mpKey.isEmpty() ? "未配置" : "已填"),
+                "2bt0 资源库地址：" + shown(DeskConfig.libBase, "未配置"),
+                "2bt0 Key：" + (DeskConfig.libKey.isEmpty() ? "未配置" : "已填"),
+                "直播源 M3U：" + shown(DeskConfig.liveM3u, "未配置"),
+                "EPG 地址：" + shown(DeskConfig.epgUrl, "未配置"),
+                "清空全部接入配置"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("服务接入（留空 = 关闭该功能）")
+                .setItems(items, (d, which) -> {
+                    switch (which) {
+                        case 0: editConfig(DeskConfig.KEY_JF_BASE, "Jellyfin 地址", "http://192.168.1.10:8096", false); return;
+                        case 1: editConfig(DeskConfig.KEY_JF_TOKEN, "Jellyfin 令牌（API Key / Token）", "", false); return;
+                        case 2: editConfig(DeskConfig.KEY_JF_USER, "Jellyfin 用户 ID", "", false); return;
+                        case 3: editConfig(DeskConfig.KEY_MP_BASE, "MoviePilot 地址", "http://192.168.1.10:3000", false); return;
+                        case 4: editConfig(DeskConfig.KEY_MP_KEY, "MoviePilot API Key", "", false); return;
+                        case 5: editConfig(DeskConfig.KEY_LIB_BASE, "2bt0 资源库地址", "http://192.168.1.10:8000", false); return;
+                        case 6: editConfig(DeskConfig.KEY_LIB_KEY, "2bt0 API Key", "", false); return;
+                        case 7: editConfig(DeskConfig.KEY_LIVE_M3U, "直播源 M3U 地址", "http://example.com/live.m3u", false); return;
+                        case 8: editConfig(DeskConfig.KEY_EPG_URL, "EPG（XMLTV.gz）地址", "", false); return;
+                        case 9:
+                            new AlertDialog.Builder(this)
+                                    .setTitle("清空接入配置？")
+                                    .setMessage("清空后推荐页 / 影视页 / 直播都会关闭，只剩普通桌面。")
+                                    .setPositiveButton("清空", (dd, ww) -> {
+                                        String[] keys = {DeskConfig.KEY_JF_BASE, DeskConfig.KEY_JF_TOKEN, DeskConfig.KEY_JF_USER,
+                                                DeskConfig.KEY_MP_BASE, DeskConfig.KEY_MP_KEY, DeskConfig.KEY_LIB_BASE,
+                                                DeskConfig.KEY_LIB_KEY, DeskConfig.KEY_LIVE_M3U, DeskConfig.KEY_EPG_URL};
+                                        android.content.SharedPreferences.Editor e = TVDeskPrefs.get(this).edit();
+                                        for (String k : keys) e.remove(k);
+                                        e.apply();
+                                        DeskConfig.load(this);
+                                        Toast.makeText(this, "已清空，重启桌面生效", Toast.LENGTH_SHORT).show();
+                                        showServicesDialog();
+                                    })
+                                    .setNegativeButton("取消", (dd, ww) -> showServicesDialog())
+                                    .show();
+                            return;
+                    }
+                })
+                .setNegativeButton("返回", (d, w) -> showTvDeskDialog())
+                .show();
+    }
+
+    private static String shown(String v, String def) {
+        return v == null || v.isEmpty() ? def : v;
+    }
+
+    private void editConfig(final String key, String title, String hint, boolean numeric) {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setText(DeskConfig.get(this, key));
+        input.setSelection(input.getText().length());
+        input.setHint(hint);
+        input.setInputType(numeric ? android.text.InputType.TYPE_CLASS_NUMBER
+                : android.text.InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(input)
+                .setPositiveButton("保存", (d, w) -> {
+                    DeskConfig.put(LauncherSettingsActivity.this, key, input.getText().toString());
+                    Toast.makeText(this, "已保存，重启桌面生效", Toast.LENGTH_SHORT).show();
+                    showServicesDialog();
+                })
+                .setNegativeButton("取消", (d, w) -> showServicesDialog())
                 .show();
     }
 

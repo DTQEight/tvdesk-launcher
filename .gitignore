@@ -5,3 +5,7 @@ launcher/build/
 launcher/local.properties
 *.iml
 .idea/
+# 本机接入配置（密钥 / 内网地址），永远不要提交
+desk.json
+desk.local.json
+*.apk

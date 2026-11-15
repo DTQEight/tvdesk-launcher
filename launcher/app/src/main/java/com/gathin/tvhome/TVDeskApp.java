@@ -15,6 +15,8 @@ public class TVDeskApp extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        // 先把连接参数灌进各客户端；没配的客户端自己关掉对应功能
+        DeskConfig.load(this);
         JellyfinClient.init(this);
         LibClient.init(this);
         final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();

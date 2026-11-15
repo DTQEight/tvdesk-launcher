@@ -1,8 +1,5 @@
 package com.gathin.tvhome;
 
-import android.view.SurfaceView;
-import android.view.SurfaceHolder;
-
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
@@ -119,36 +116,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** Idle time on Home before ClockActivity; 0 is off (config.xml, home_idle_clock_minutes). */
     private long idleClockMs;
     private final Runnable showIdleClock = () -> {
-        // 进屏保前把直播预览停掉，省解码器/电
-        stopPreviewForIdle();
         startActivity(new Intent(this, ClockActivity.class));
     };
     private String liveTvAction;
 
-    /** 屏保/空闲时停掉预览（方法体内可以引用后面声明的字段）。 */
-
     private boolean activityResumed;
-    /** 预览黑屏看护：8 秒还没在播就重启一次预览。 */
-    private final Runnable previewWatchdog = new Runnable() {
-        @Override public void run() {
-            try {
-                if (livePreview == null || liveSurface == null) return;
-                if (!TVDeskPrefs.preview(MainActivity.this)) return;
-                if (!activityResumed) return;                                  // 播放器在前台时别抢解码器
-                if (pager != null && pager.getCurrentItem() != 0) return;      // 只在主页跑预览
-                if (!livePreview.isPlaying() && liveSurface.getHolder().getSurface() != null
-                        && liveSurface.getHolder().getSurface().isValid()) {
-                    android.util.Log.w("CYT-LIVE", "preview stalled, restarting");
-                    startLive(liveSurface.getHolder());
-                }
-            } catch (Throwable ignored) { }
-            handler.postDelayed(this, 20000L);
-        }
-    };
 
-    private void stopPreviewForIdle() {
-        if (livePreview != null) livePreview.stop();
-    }
     private String inputAction;
     private String sourcePanelService;
     private String sourcePanelAction;
@@ -186,11 +159,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private View clockBlock;
     private View btnInputs;
 
-    // 直播预览（CleanYourTV + ijkplayer）
-    private LivePreview livePreview;
-    private SurfaceView liveSurface;
-    private java.util.List<LiveSource.Ch> liveChannels;
-    private int liveIndex = -1;
+    // 直播入口卡片（主页不播流，点进去才全屏直播）
     private View liveBox;
     private View[] shelfCells;
     private final LinearLayout[] tabsLeft = new LinearLayout[2];
@@ -215,6 +184,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private java.util.List<JellyfinClient.Item> shelfItems;
     private String[] shelfIds;
     private TextView btnWifi;
+    private View btnSettingsPill;
     /** The network pill's icon as last set, so a refresh that changes nothing does not lay the top bar out again. */
     private int wifiIcon;
     /** The pills have been filled in once; later resumes refresh them after the first frame. */
@@ -579,7 +549,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
 
         btnInputs = findViewById(R.id.btnInputs);
-        View btnSettings = findViewById(R.id.btnSettings);
+        View btnSettings = btnSettingsPill = findViewById(R.id.btnSettings);
         btnInputs.setOnClickListener(v -> showInputs());
         btnWifi.setOnClickListener(v -> openNetworkPill());
         btnWifi.setOnLongClickListener(v -> {
@@ -620,6 +590,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 return true;
             }
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                // 胶囊在所有页面都可见，↓ 必须落进"当前页"的内容：
+                // 主页回 ↑ 出发的格子；推荐/影视页它们的格子和 HDMI 标签是 GONE，
+                // 回那些控件只会让焦点凭空消失
+                int page = pager == null ? 0 : pager.getCurrentItem();
+                if (page == 1 && recommendView != null) {
+                    if (recommendView.hasContent()) recommendView.focusFirst();
+                    else if (pageTabRec != null) pageTabRec.requestFocus();
+                    return true;
+                }
+                if (page == 2 && jellyfinView != null) {
+                    jellyfinView.focusWallFirst();
+                    return true;
+                }
                 // Back to the dock tile Up came from, not wherever the focus finder lands.
                 focusTile(lastFocused % COLUMNS);
                 // Dock 为空（模拟器/新装机）时退到顶部 tab 行，别把焦点困在胶囊里
@@ -746,16 +729,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         handler.postDelayed(new Runnable() {
             @Override public void run() { try { SourceSwitcher.releaseSource(MainActivity.this); } catch (Throwable ignored) { } }
         }, 1200L);
-        handler.removeCallbacks(previewWatchdog);
-        handler.postDelayed(previewWatchdog, 8000L);
         // 回到桌面：释放电视信号源，否则 HDMI 的声音会继续在后台响
         try { SourceSwitcher.releaseSource(this); } catch (Throwable ignored) { }
         if (!shelfLoaded) loadShelf();
         armHomeProps();
-        if (livePreview != null && liveChannels != null && liveIndex >= 0 && liveSurface != null
-                && liveSurface.getHolder().getSurface() != null && liveSurface.getHolder().getSurface().isValid()) {
-            startLive(liveSurface.getHolder());
-        }
         // A festival that started or ended while Home was in the background: rebuild with or without it.
         if (festive != festival.active(LocalDate.now())) {
             recreate();
@@ -901,7 +878,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         endReorder();   // Home or another app while reordering keeps the order so far
         activityResumed = false;
         wallpaperPlayer.stop();
-        if (livePreview != null) livePreview.stop();   // 释放直播预览解码器
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();
@@ -1194,6 +1170,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                                     android.view.ViewGroup.LayoutParams.MATCH_PARENT));
                             if (currentBackdrop != null) jellyfinView.setBackdrop(currentBackdrop);
+                            // 左栏顶到最上按 ↑：光标交回顶部「影视」tab（几何搜索够不到，用显式提示）
+                            if (pageTabLib != null) jellyfinView.setTopUpTarget(pageTabLib);
                         }
                         final JellyfinView jv = jellyfinView;
                         return new androidx.recyclerview.widget.RecyclerView.ViewHolder(jv) { };
@@ -1204,6 +1182,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT));
                         if (currentBackdrop != null) recommendView.setBackdrop(currentBackdrop);
+                        if (pageTabRec != null) recommendView.setTopUpTarget(pageTabRec);
                         recommendView.setListener(new RecommendView.Listener() {
                             @Override public void onBack() { showHomePage(); }
                         });
@@ -1220,21 +1199,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         @Override public void onPageSelected(int position) {
                             currentPage = position;
                             setPageTabSelected(position);
-                            // 切到推荐页：停掉直播预览，省解码器和流量
-                            if (position == 1) {
-                                if (livePreview != null) livePreview.stop();
-                            } else {
-                                // 回主页：重新起预览
-                                if (TVDeskPrefs.preview(MainActivity.this) && liveSurface != null
-                                        && liveSurface.getHolder().getSurface() != null
-                                        && liveSurface.getHolder().getSurface().isValid()) {
-                                    startLive(liveSurface.getHolder());
-                                }
-                            if (jellyfinView != null && currentBackdrop != null) jellyfinView.setBackdrop(currentBackdrop);
+                            if (position != 1 && jellyfinView != null && currentBackdrop != null) {
+                                jellyfinView.setBackdrop(currentBackdrop);
                             }
                             if (position == 1 && recommendView != null) {
                                 recommendView.focusFirst();
                                 if (currentBackdrop != null) recommendView.setBackdrop(currentBackdrop);
+                        if (pageTabRec != null) recommendView.setTopUpTarget(pageTabRec);
                             }
                         }
                     });
@@ -1282,15 +1253,29 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         bar.setGravity(android.view.Gravity.CENTER);
 
         final View home = pageChip("主页", true);
-        final View rec = pageChip("推荐 ›", false);
         LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(dp(96), dp(42));
         lp1.rightMargin = dp(10);
         bar.addView(home, lp1);
-        bar.addView(rec, new LinearLayout.LayoutParams(dp(110), dp(42)));
-        final View lib = pageChip("影视", false);
-        LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(dp(96), dp(42));
-        lp3.leftMargin = dp(10);
-        bar.addView(lib, lp3);
+
+        // 没配置对应服务就不显示这个 tab，退化成普通桌面
+        final boolean showRec = DeskConfig.hasRecommend();
+        final boolean showLib = DeskConfig.hasJellyfin();
+
+        View recTmp = null;
+        if (showRec) {
+            recTmp = pageChip("推荐 ›", false);
+            bar.addView(recTmp, new LinearLayout.LayoutParams(dp(110), dp(42)));
+        }
+        final View rec = recTmp;
+
+        View libTmp = null;
+        if (showLib) {
+            libTmp = pageChip("影视", false);
+            LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(dp(96), dp(42));
+            lp3.leftMargin = dp(10);
+            bar.addView(libTmp, lp3);
+        }
+        final View lib = libTmp;
 
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
@@ -1321,17 +1306,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         pageTabHome = home;
         pageTabRec = rec;
         pageTabLib = lib;
-        home.setNextFocusRightId(rec.getId());
-        rec.setNextFocusRightId(lib.getId());
-        lib.setNextFocusLeftId(rec.getId());
-        rec.setNextFocusLeftId(home.getId());
+
+        // 焦点链按实际存在的芯片连起来
+        View prevChip = home;
+        if (rec != null) { prevChip.setNextFocusRightId(rec.getId()); rec.setNextFocusLeftId(prevChip.getId()); prevChip = rec; }
+        if (lib != null) { prevChip.setNextFocusRightId(lib.getId()); lib.setNextFocusLeftId(prevChip.getId()); }
+
         if (tabsLeft[0] != null) {
             home.setNextFocusDownId(tabsLeft[0].getId());
-            rec.setNextFocusDownId(tabsRight[1].getId());
+            if (rec != null) rec.setNextFocusDownId(tabsRight[1].getId());
+            if (lib != null) lib.setNextFocusDownId(tabsRight[1].getId());
         }
         home.setOnClickListener(v -> showHomePage());
-        rec.setOnClickListener(v -> openRecommend());
-        lib.setOnClickListener(v -> openLibrary());
+        if (rec != null) rec.setOnClickListener(v -> openRecommend());
+        if (lib != null) lib.setOnClickListener(v -> openLibrary());
     }
 
     /** 一个页面 tab 芯片。 */
@@ -1345,24 +1333,36 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         tv.setId(android.view.View.generateViewId());
         tv.setFocusable(true);
         tv.setFocusableInTouchMode(true);
-        tv.setBackground(pageChipBg(selected, false));
-        tv.setTextColor(selected ? 0xFF0B1116 : 0xFFE6EEF5);
-        tv.setOnFocusChangeListener((v, has) -> {
-            boolean picked = (v == pageTabRec) ? pageIsRecommend : !pageIsRecommend;
-            v.setBackground(pageChipBg(picked, has));
-            ((TextView) v).setTextColor(has || picked ? 0xFF0B1116 : 0xFFE6EEF5);
-            v.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(120).start();
-        });
+        // 焦点样式交给状态表：白底深字 = 聚焦，暗底浅字 = 其余（含当前页），
+        // 框架在焦点变化/重绘时自动切换，不依赖监听器的触发时机
+        tv.setBackground(pageChipBg());
+        tv.setTextColor(pageChipTextColors());
+        tv.setSelected(selected);
+        // 聚焦不放大：放大动画会把文字重渲染变粗（黑体感），白底蓝框足以区分焦点
         return tv;
     }
 
-    private android.graphics.drawable.GradientDrawable pageChipBg(boolean selected, boolean focused) {
-        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
-        d.setCornerRadius(dp(20));
-        if (focused) { d.setColor(0xFFFFFFFF); d.setStroke(dp(3), 0xFF00A4DC); }
-        else if (selected) { d.setColor(0x1F101820); d.setStroke(dp(1), 0x2AFFFFFF); }   // 当前页不给特殊样式，避免和焦点混淆
-        else { d.setColor(0x1F101820); d.setStroke(dp(1), 0x2AFFFFFF); }
+    /** 页面 chip 的状态背景：聚焦白底蓝框，其余暗底。 */
+    private android.graphics.drawable.Drawable pageChipBg() {
+        android.graphics.drawable.StateListDrawable d = new android.graphics.drawable.StateListDrawable();
+        android.graphics.drawable.GradientDrawable focused = new android.graphics.drawable.GradientDrawable();
+        focused.setCornerRadius(dp(20));
+        focused.setColor(0xFFFFFFFF);
+        focused.setStroke(dp(3), 0xFF00A4DC);
+        android.graphics.drawable.GradientDrawable normal = new android.graphics.drawable.GradientDrawable();
+        normal.setCornerRadius(dp(20));
+        normal.setColor(0x1F101820);
+        normal.setStroke(dp(1), 0x2AFFFFFF);
+        d.addState(new int[]{android.R.attr.state_focused}, focused);
+        d.addState(new int[]{-android.R.attr.state_focused}, normal);
         return d;
+    }
+
+    /** 页面 chip 的文字颜色：聚焦深字（白底上），其余浅字。 */
+    private android.content.res.ColorStateList pageChipTextColors() {
+        return new android.content.res.ColorStateList(
+                new int[][]{{android.R.attr.state_focused}, {}},
+                new int[]{0xFF0B1116, 0xFFE6EEF5});
     }
 
     private void installTopTabs() {
@@ -1460,9 +1460,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         try {
             if (pager == null) return;
             pager.setCurrentItem(1, true);
-            if (recommendView != null) handler.postDelayed(new Runnable() {
-                @Override public void run() { recommendView.focusFirst(); }
-            }, 260L);
+            if (recommendView != null) {
+                // 开机时网络未就绪会拉空，进页时自动重试（loadWall 内有 15 秒防抖）
+                if (!recommendView.hasContent()) recommendView.loadWall();
+                handler.postDelayed(new Runnable() {
+                    @Override public void run() { recommendView.focusFirst(); }
+                }, 260L);
+            }
             setPageTabSelected(1);
         } catch (Throwable t) {
             android.util.Log.w("CYT-MP", "openRecommend failed " + t);
@@ -1471,7 +1475,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** 切回主页。 */
     private void showHomePage() {
-        if (pager != null) pager.setCurrentItem(0, true);
+        // 即时切换（平滑滚动时 ViewPager2 会在动画里抢焦点，把 chip 的白底光标打回暗底）
+        if (pager != null) pager.setCurrentItem(0, false);
         setPageTabSelected(0);
         if (pageTabHome != null) handler.postDelayed(new Runnable() {
             @Override public void run() { pageTabHome.requestFocus(); }
@@ -1485,23 +1490,27 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (topScrim != null) topScrim.setVisibility(page == 0 ? View.GONE : View.VISIBLE);
         // 切到推荐/影视页时把主页网格（含底部 dock）藏起来，否则会浮在页面上面
         if (grid != null) grid.setVisibility(page == 0 ? View.VISIBLE : View.GONE);
-        if (jellyfinView != null && page != 2) jellyfinView.setTabsFocused(false);
-        // 直播预览只在主页显示，别的小页面上一角露出会很怪
-        if (liveSurface != null) liveSurface.setVisibility(page == 0 ? View.VISIBLE : View.INVISIBLE);
-        if (page != 0 && livePreview != null) livePreview.stop();   // 让出硬件解码器
-        boolean isLib = page == 2;
-        if (pageTabHome != null) {
-            pageTabHome.setBackground(pageChipBg(page == 0, false));
-            ((TextView) pageTabHome).setTextColor(page == 0 ? 0xFF0B1116 : 0xFFE6EEF5);
+        // 顶部 HDMI/最近观看/待定 标签也只属于主页：其他页面必须 GONE，
+        // 否则它们只是被页面盖住，焦点搜索会落到这些隐形控件上（光标消失）
+        boolean homeTab = page == 0;
+        if (tabsLeft[0] != null) tabsLeft[0].setVisibility(homeTab ? View.VISIBLE : View.GONE);
+        if (tabsLeft[1] != null) tabsLeft[1].setVisibility(homeTab ? View.VISIBLE : View.GONE);
+        if (tabsRight[0] != null) tabsRight[0].setVisibility(homeTab ? View.VISIBLE : View.GONE);
+        if (tabsRight[1] != null) tabsRight[1].setVisibility(homeTab ? View.VISIBLE : View.GONE);
+        // 非当前页整页禁止聚焦：ViewPager2 的离屏页面只是被平移出去，控件仍是 VISIBLE，
+        // 几何焦点搜索会把它们当候选（光标跳到屏幕外的页面上"消失"）
+        if (recommendView != null) {
+            recommendView.setDescendantFocusability(page == 1
+                    ? ViewGroup.FOCUS_AFTER_DESCENDANTS : ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         }
-        if (pageTabRec != null) {
-            pageTabRec.setBackground(pageChipBg(page == 1, false));
-            ((TextView) pageTabRec).setTextColor(page == 1 ? 0xFF0B1116 : 0xFFE6EEF5);
+        if (jellyfinView != null) {
+            jellyfinView.setDescendantFocusability(page == 2
+                    ? ViewGroup.FOCUS_AFTER_DESCENDANTS : ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         }
-        if (pageTabLib != null) {
-            pageTabLib.setBackground(pageChipBg(page == 2, false));
-            ((TextView) pageTabLib).setTextColor(page == 2 ? 0xFF0B1116 : 0xFFE6EEF5);
-        }
+        // 当前页标记交给 setSelected（背景已由状态表统一处理）
+        if (pageTabHome != null) pageTabHome.setSelected(page == 0);
+        if (pageTabRec != null) pageTabRec.setSelected(page == 1);
+        if (pageTabLib != null) pageTabLib.setSelected(page == 2);
     }
 
     /** 切到影视库页。 */
@@ -1510,10 +1519,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (pager == null) return;
             pager.setCurrentItem(2, false);
             setPageTabSelected(2);
-            if (jellyfinView != null) {
-                jellyfinView.setTabsFocused(false);
-                jellyfinView.requestFocus();
-                jellyfinView.focusFirst();
+            if (jellyfinView != null && !jellyfinView.hasFocus()) {
+                jellyfinView.focusFirst();   // 光标不在页内时落到左栏；在页内则保持原位
             }
         } catch (Throwable t) {
             android.util.Log.w("CYT-JF", "openLibrary failed " + t);
@@ -1818,17 +1825,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
     }
 
-    /** 桌面直播预览 + 顶部「直播」胶囊 + 全屏页跳转。 */
+    /** 桌面「直播」入口卡片（不播流）+ 全屏页跳转：主页不占解码器，点进去才开播。 */
     private void installLive() {
         try {
             int w = dp(560), h = dp(315);
             FrameLayout box = new FrameLayout(this);
             box.setId(android.view.View.generateViewId());
             liveBox = box;
-            box.setBackgroundColor(0x00000000);
-            liveSurface = new SurfaceView(this);
-            box.addView(liveSurface, new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setColor(0xFF121A24);
+            bg.setCornerRadius(dp(8));
+            box.setBackground(bg);
 
             TextView cap = new TextView(this);
             cap.setText("直播");
@@ -1842,7 +1849,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             clp.setMargins(dp(10), 0, 0, dp(10));
             box.addView(cap, clp);
 
-            // 焦点描边（叠在视频上，聚焦时才显示）
+            // 焦点描边（聚焦时才显示）
             final View liveRing = new View(this);
             android.graphics.drawable.GradientDrawable lrg = new android.graphics.drawable.GradientDrawable();
             lrg.setColor(0x00000000);
@@ -1880,52 +1887,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             lp.topMargin = dp(196);
             lp.leftMargin = dp(60);
             root.addView(box, lp);
-
-            liveSurface.getHolder().addCallback(new SurfaceHolder.Callback() {
-                @Override public void surfaceCreated(SurfaceHolder holder) { startLive(holder); }
-                @Override public void surfaceChanged(SurfaceHolder holder, int f, int ww, int hh) { }
-                @Override public void surfaceDestroyed(SurfaceHolder holder) { }
-            });
         } catch (Throwable t) {
             android.util.Log.e("CYT-LIVE", "installLive failed " + t);
         }
     }
 
-    private void startLive(final SurfaceHolder holder) {
-        if (livePreview != null) livePreview.release();
-        if (!TVDeskPrefs.preview(this)) return;
-        livePreview = new LivePreview();
-        if (liveChannels != null && liveIndex >= 0) {
-            livePreview.play(liveChannels.get(liveIndex).url, holder.getSurface());
-            return;
-        }
-        new Thread(new Runnable() {
-            @Override public void run() {
-                final java.util.List<LiveSource.Ch> list = LiveSource.load(getApplicationContext());
-                runOnUiThread(new Runnable() {
-                    @Override public void run() {
-                        if (list.isEmpty()) {
-                            // 开机网络可能还没好，3 秒后重试
-                            root.postDelayed(new Runnable() {
-                                @Override public void run() { startLive(holder); }
-                            }, 3000);
-                            return;
-                        }
-                        liveChannels = list;
-                        liveIndex = LiveSource.jade(list);
-                        if (liveIndex < 0) liveIndex = 0;
-                        if (livePreview == null) livePreview = new LivePreview();
-                        livePreview.play(liveChannels.get(liveIndex).url, holder.getSurface());
-                    }
-                });
-            }
-        }, "cyt-live-load").start();
-    }
-
     private void openLiveFullscreen() {
-        Intent i = new Intent(this, LivePlayerActivity.class);
-        i.putExtra("index", liveIndex);
-        startActivity(i);
+        startActivity(new Intent(this, LivePlayerActivity.class));
     }
 
     /** 让创维的 HOME 键指向本桌面：开机后 persist 属性会被清空，这里每次回到前台补一次。 */
@@ -1990,20 +1958,21 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
             return true;
         }
-        // 影视页顶到最上面再按 ↑：光标交回顶部「影视」tab，剩下让用户自己左右选
-        if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
-                && event.getAction() == KeyEvent.ACTION_DOWN
-                && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
-                && jellyfinView.isAtTop()) {
-            jellyfinView.setTabsFocused(true);      // 页面让出按键和选中框
-            if (pageTabLib != null) pageTabLib.requestFocus();
-            return true;
-        }
-        // 影视页：方向键/OK 全部交给页面自己处理（页面内部维护选择状态）
-        if (pager != null && pager.getCurrentItem() == 2 && jellyfinView != null
-                && event.getAction() == KeyEvent.ACTION_DOWN
-                && jellyfinView.handleKey(event.getKeyCode())) {
-            return true;
+        // 顶部页面 chip 上按 ↓/OK：进入该 chip 对应的页面（TV 标准的跨容器提示）
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            int kc = event.getKeyCode();
+            boolean downOrOk = kc == KeyEvent.KEYCODE_DPAD_DOWN
+                    || kc == KeyEvent.KEYCODE_DPAD_CENTER || kc == KeyEvent.KEYCODE_ENTER;
+            View cur = getCurrentFocus();
+            if (downOrOk && cur == pageTabRec) { openRecommend(); return true; }
+            if (downOrOk && cur == pageTabLib) {
+                openLibrary();
+                if (kc == KeyEvent.KEYCODE_DPAD_DOWN && jellyfinView != null) {
+                    jellyfinView.focusWallFirst();   // ↓ 直接进墙，和旧版一致
+                }
+                return true;
+            }
+            // 主页 chip：↓ 走几何搜索进主页网格，OK 走 chip 自身的点击（showHomePage）
         }
         // 在推荐页/影视页时，别让焦点跑回主页；在主页时也别跑到看不见的页
         if (pager != null && event.getAction() == KeyEvent.ACTION_DOWN) {
@@ -2013,15 +1982,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 View pageView = pageViewOf(cur);
                 if (pageView == null) pageView = page == 1 ? recommendView : jellyfinView;
                 boolean onTab = (cur == pageTabHome || cur == pageTabRec || cur == pageTabLib);
-                if (!onTab && (cur == null || !isInside(cur, pageView))) {
+                // 顶部胶囊（wifi/设置等）也是合法的焦点位置，别把它们的按键吞掉：
+                // 否则 OK 打不开 WiFi 设置，方向键也被当成"焦点丢失"抢回页面
+                boolean onPill = (cur == btnWifi || cur == btnSettingsPill || cur == btnInputs
+                        || cur == btnReorder || cur == btnLibraryTop);
+                if (!onTab && !onPill && (cur == null || !isInside(cur, pageView))) {
+                    // 推荐页没有可聚焦内容（数据源失败）时，光标交回「推荐」tab，别把按键吞死
+                    if (page == 1 && recommendView != null && !recommendView.hasContent()) {
+                        if (pageTabRec != null) pageTabRec.requestFocus();
+                        return true;
+                    }
                     if (page == 1 && recommendView != null) recommendView.focusFirst();
                     else if (page == 2 && jellyfinView != null) jellyfinView.focusFirst();
-                    return true;
-                }
-            } else if (cur != null) {
-                if ((recommendView != null && isInside(cur, recommendView))
-                        || (jellyfinView != null && isInside(cur, jellyfinView))) {
-                    if (pageTabHome != null) pageTabHome.requestFocus();
                     return true;
                 }
             }

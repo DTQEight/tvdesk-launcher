@@ -47,6 +47,8 @@ public class RecommendView extends FrameLayout {
     private LinearLayout detailContent;
     private TextView detailBack;
     private boolean detailOpen;
+    /** 详情请求代数：关掉/换片后作废在途响应，防止旧详情覆盖新详情。 */
+    private int detailEpoch;
     private View firstDetailFocus;
     private View lastFocusedCard;
     private ImageView bg;
@@ -61,6 +63,8 @@ public class RecommendView extends FrameLayout {
         screenW = getResources().getDisplayMetrics().widthPixels;
         FrameLayout root = new FrameLayout(ctx);
         setBackgroundColor(0xFF0B1116);
+        // 与影视页同理：成为当前页之前整页禁止聚焦，避免离屏页面被焦点搜索命中
+        setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
 
         // 背景：和主页同一套 Jellyfin 剧照（模糊 + 渐变压暗），不再是纯黑
         bg = new ImageView(ctx);
@@ -90,15 +94,8 @@ public class RecommendView extends FrameLayout {
         root.addView(scroll, slp);
 
 
-        final TextView loading = new TextView(ctx);
-        loading.setText("正在载入海报…");
-        loading.setTextColor(0xFF8FA3B0);
-        loading.setTextSize(16);
-        content.addView(loading);
-
         addView(root, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
         // 详情层（默认隐藏）：点卡片时铺上来
         detailScroll = new ScrollView(ctx);
         // 详情层完全透明，背景图直接透出（不加黑底）
@@ -126,13 +123,29 @@ public class RecommendView extends FrameLayout {
         });
         loadBackdrop();
 
+        loadWall();
+    }
 
+    /** 拉推荐墙；15 秒内不重复拉（开机网络未就绪时，靠进页重试恢复）。 */
+    private long lastWallAt;
+
+    public void loadWall() {
+        if (System.currentTimeMillis() - lastWallAt < 15_000L) return;
+        lastWallAt = System.currentTimeMillis();
+        content.removeAllViews();
+        cards.clear();
+        firstFocus = null;
+        final TextView loading = new TextView(ctx);
+        loading.setText("正在载入海报…");
+        loading.setTextColor(0xFF8FA3B0);
+        loading.setTextSize(16);
+        content.addView(loading);
         new Thread(new Runnable() {
             @Override public void run() {
                 final List<MpClient.Section> wall = MpClient.wall();
                 post(new Runnable() {
                     @Override public void run() {
-                        content.removeView(loading);
+                        content.removeAllViews();
                         buildSections(wall);
                         if (firstFocus != null) firstFocus.requestFocus();
                     }
@@ -168,12 +181,17 @@ public class RecommendView extends FrameLayout {
                 View card = makeCard(item, i == 0);
                 row.addView(card, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-                if (firstFocus == null) firstFocus = card;
+                if (firstFocus == null) {
+                    firstFocus = card;
+                    // 首行卡片和顶部 tab 几乎同高，几何搜索找不到"严格在上方"的候选，
+                    // 用显式提示把 ↑ 接到「推荐」tab（TV 标准的跨容器导航写法）
+                    if (topUpTarget != null) card.setNextFocusUpId(topUpTarget.getId());
+                }
             }
         }
         if (firstFocus == null) {
             TextView empty = new TextView(ctx);
-            empty.setText("没有拿到推荐数据（MoviePilot 接口暂时没返回内容）");
+            empty.setText("没有拿到推荐数据（MoviePilot 接口未返回内容，请检查其登录/鉴权设置）");
             empty.setTextColor(0xFF8FA3B0);
             empty.setTextSize(16);
             content.addView(empty);
@@ -383,6 +401,16 @@ public class RecommendView extends FrameLayout {
         if (firstFocus != null) firstFocus.requestFocus();
     }
 
+    /** 第一张卡按 ↑ 交回的顶部控件（宿主的「推荐」tab）。 */
+    private android.view.View topUpTarget;
+
+    public void setTopUpTarget(android.view.View v) { topUpTarget = v; }
+
+    /** 墙里有没有可聚焦的卡片（数据源失败/为空时是 false）。 */
+    public boolean hasContent() {
+        return firstFocus != null;
+    }
+
     private void closeWithSlide() {
         if (listener != null) listener.onBack();
     }
@@ -438,6 +466,8 @@ public class RecommendView extends FrameLayout {
     private void showMovieDetail(final MpClient.Item item) {
         if (detailScroll == null) return;
         detailOpen = true;
+        final int epoch = ++detailEpoch;
+        firstDetailFocus = null;   // 每次开新详情，聚焦标记归零
         detailContent.removeAllViews();
         if (wallScroll != null) wallScroll.setVisibility(View.GONE);
         detailScroll.setVisibility(View.VISIBLE);
@@ -456,7 +486,10 @@ public class RecommendView extends FrameLayout {
                 final LibClient.Movie mv = LibClient.movie(item.libId);
                 final java.util.List<LibClient.Mag> mags = LibClient.magnets(item.libId);
                 post(new Runnable() {
-                    @Override public void run() { renderDetail(item, mv, mags); }
+                    @Override public void run() {
+                        if (epoch != detailEpoch) return;   // 期间关了/换了详情，旧响应作废
+                        renderDetail(item, mv, mags);
+                    }
                 });
             }
         }, "cyt-detail").start();
@@ -740,6 +773,7 @@ public class RecommendView extends FrameLayout {
     public void closeDetail() {
         if (!detailOpen) return;
         detailOpen = false;
+        detailEpoch++;
         if (detailScroll != null) detailScroll.setVisibility(View.GONE);
         if (detailBack != null) detailBack.setVisibility(View.GONE);
         if (wallScroll != null) wallScroll.setVisibility(View.VISIBLE);

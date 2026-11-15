@@ -20,8 +20,8 @@ import java.util.List;
 public final class MpClient {
 
     private static final String TAG = "CYT-MP";
-    public static final String BASE = "http://192.168.31.52:3000";
-    private static final String KEY = "oasHPCoFmMUARUrkSYlFrw";
+    public static String BASE = "";   // 由 DeskConfig 注入
+    static String KEY = "";            // 由 DeskConfig 注入
 
     /** 图床兜底代理（Clash），只给资源库没命中的片用。 */
     private static final String PROXY_HOST = "192.168.31.1";
@@ -55,7 +55,12 @@ public final class MpClient {
         ctx = c.getApplicationContext();
     }
 
+    public static boolean configured() {
+        return BASE != null && !BASE.trim().isEmpty() && KEY != null && !KEY.trim().isEmpty();
+    }
+
     public static synchronized List<Section> wall() {
+        if (!configured()) return new ArrayList<>();
         if (cache != null && System.currentTimeMillis() - cacheAt < 30 * 60_000L) return cache;
         List<Section> out = new ArrayList<>();
         out.add(section("流行趋势", "/api/v1/recommend/tmdb_trending?page=1"));
@@ -122,8 +127,11 @@ public final class MpClient {
         int hit2 = 0;
         for (Section s3 : out) hit2 += s3.items.size();
         int hit = hit2;
-        cache = out;
-        cacheAt = System.currentTimeMillis();
+        // 空结果不进缓存（开机时网络未就绪拉取失败，不能让空页挂 30 分钟）
+        if (!out.isEmpty()) {
+            cache = out;
+            cacheAt = System.currentTimeMillis();
+        }
         int total = 0;
         for (Section s2 : out) total += s2.items.size();
         Log.i(TAG, "wall built sections=" + out.size() + " items=" + total + " libHit=" + hit);
@@ -151,7 +159,9 @@ public final class MpClient {
         HttpURLConnection c = null;
         BufferedReader r = null;
         try {
-            c = (HttpURLConnection) new URL(BASE + path).openConnection();
+            // MoviePilot 的 API Key 只认 query 参数 token=（X-API-Key 头会被 401 拒掉）
+            String sep = path.contains("?") ? "&" : "?";
+            c = (HttpURLConnection) new URL(BASE + path + sep + "token=" + KEY).openConnection();
             c.setConnectTimeout(8000);
             c.setReadTimeout(15000);
             c.setRequestProperty("X-API-Key", KEY);

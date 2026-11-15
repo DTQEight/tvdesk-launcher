@@ -163,10 +163,5 @@
             android:exported="true"
             android:theme="@style/Theme.TvPlayer"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize" />
-            <activity
-            android:name=".JellyfinActivity"
-            android:exported="false"
-            android:screenOrientation="landscape"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
     </application>
 </manifest>

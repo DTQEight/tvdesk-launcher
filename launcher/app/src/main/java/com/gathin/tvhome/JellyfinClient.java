@@ -20,8 +20,8 @@ import java.util.List;
 public final class JellyfinClient {
 
     private static final String TAG = "CYT-JF";
-    public static final String BASE = "http://192.168.31.52:8096";
-    public static final String TOKEN = "af6f7e3b29f84b50b8773c17f2bc325c";
+    public static String BASE = "";   // 由 DeskConfig 注入
+    public static String TOKEN = "";  // 由 DeskConfig 注入
     /** 「国产剧」媒体库 */
     public static final String LIB_CN_DRAMA = "9a63b0643a0b5e4f2cd3e747c56fffbe";
 
@@ -51,6 +51,11 @@ public final class JellyfinClient {
     /** 由 Application 调用，用于离线缓存。 */
     public static void init(android.content.Context ctx) {
         appCtx = ctx.getApplicationContext();
+    }
+
+    /** 没配置服务器 / 令牌时，所有接口直接返回空，界面退化成普通桌面。 */
+    public static boolean configured() {
+        return BASE != null && !BASE.trim().isEmpty() && TOKEN != null && !TOKEN.trim().isEmpty();
     }
 
     private static void saveCache(String name, String text) {
@@ -85,6 +90,7 @@ public final class JellyfinClient {
 
     /** 取某媒体库里的剧集，按添加时间倒序。 */
     public static List<Item> series(String libraryId, int limit) {
+        if (!configured()) return new ArrayList<>();
         String raw = fetchJson(BASE + "/Items?ParentId=" + libraryId
                 + "&IncludeItemTypes=Series&Recursive=true"
                 + "&Fields=ProductionYear&ImageTypeLimit=1&EnableImageTypes=Primary"
@@ -172,7 +178,7 @@ public final class JellyfinClient {
         return out;
     }
 
-    /** 下载封面；失败返回 null。 */
+    /** 下载封面，解到高度约 maxH（px）；失败返回 null。 */
     public static Bitmap poster(String url, int maxH) {
         HttpURLConnection c = null;
         InputStream in = null;
@@ -181,7 +187,7 @@ public final class JellyfinClient {
             try {
                 java.io.File f = posterCacheFile(url);
                 if (f != null && f.exists()) {
-                    Bitmap cached = android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath());
+                    Bitmap cached = decodeSampled(f.getAbsolutePath(), maxH);
                     if (cached != null) return cached;
                 }
             } catch (Throwable ignored) { }
@@ -192,13 +198,13 @@ public final class JellyfinClient {
             int code1 = c.getResponseCode();
             if (code1 != 200) { android.util.Log.w("CYT-JF", "poster http " + code1 + " " + url); return null; }
             in = c.getInputStream();
-            // 先按目标高度采样，避免整张大图进内存
+            // 先量尺寸，按目标高度算采样，避免整张大图进内存
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
             BitmapFactory.decodeStream(in, null, bounds);
             try { in.close(); } catch (Throwable ignored) { }
             int sample = 1;
-            while (bounds.outHeight / sample > maxH * 2) sample *= 2;
+            while (bounds.outHeight / (sample * 2) >= maxH) sample *= 2;
             c.disconnect();
             c = open(url);
             c.setRequestProperty("Accept", "image/*");
@@ -206,6 +212,7 @@ public final class JellyfinClient {
             in = c.getInputStream();
             BitmapFactory.Options opts = new BitmapFactory.Options();
             opts.inSampleSize = sample;
+            opts.inPreferredConfig = Bitmap.Config.RGB_565;   // 海报无透明通道，内存省一半
             Bitmap out = BitmapFactory.decodeStream(in, null, opts);
             savePosterCache(url, out);
             return out;
@@ -217,6 +224,19 @@ public final class JellyfinClient {
             try { if (in != null) in.close(); } catch (Throwable ignored) { }
             try { if (c != null) c.disconnect(); } catch (Throwable ignored) { }
         }
+    }
+
+    /** 从磁盘缓存解码，同样采样 + 565，避免整图进内存。 */
+    private static Bitmap decodeSampled(String path, int maxH) {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(path, bounds);
+        int sample = 1;
+        while (bounds.outHeight / (sample * 2) >= maxH) sample *= 2;
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inSampleSize = sample;
+        opts.inPreferredConfig = Bitmap.Config.RGB_565;
+        return BitmapFactory.decodeFile(path, opts);
     }
     /** 详情页/库页通用卡片：海报 + 标题 + 副标题。 */
     public static final class Card {
@@ -235,6 +255,7 @@ public final class JellyfinClient {
 
     /** 我的媒体（Jellyfin 的各个库）。 */
     public static java.util.List<Card> views() {
+        if (!configured()) return new ArrayList<>();
         java.util.List<Card> out = new java.util.ArrayList<>();
         JSONObject o = getJson(BASE + "/Users/" + USER_ID + "/Views");
         if (o == null) return out;
@@ -259,6 +280,7 @@ public final class JellyfinClient {
     /** 某个库最近添加的影片/剧集。 */
     /** 某个库的全部条目（按名称排序，最多 limit 条）。 */
     public static java.util.List<Card> libraryItems(String libraryId, int limit) {
+        if (!configured()) return new ArrayList<>();
         java.util.List<Card> out = new java.util.ArrayList<>();
         String url = BASE + "/Items?ParentId=" + libraryId + "&Recursive=true"
                 + "&IncludeItemTypes=Movie,Series&SortBy=SortName&SortOrder=Ascending"
@@ -286,7 +308,28 @@ public final class JellyfinClient {
         return out;
     }
 
+    /** 库页背景：库本身没设 Backdrop 时，从库里随机挑一部有背景图的影片。没有则 null。 */
+    public static String libraryBackdrop(String libraryId) {
+        JSONObject o = getJson(BASE + "/Items?ParentId=" + libraryId + "&Recursive=true"
+                + "&IncludeItemTypes=Movie,Series&EnableImageTypes=Backdrop&ImageTypeLimit=1"
+                + "&SortBy=Random&Limit=8");
+        if (o == null) return null;
+        JSONArray arr = o.optJSONArray("Items");
+        if (arr == null) return null;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject it = arr.optJSONObject(i);
+            if (it == null) continue;
+            JSONArray tags = it.optJSONArray("BackdropImageTags");
+            if (tags == null || tags.length() == 0) continue;
+            String id = it.optString("Id", "");
+            if (id.isEmpty()) return null;
+            return BASE + "/Items/" + id + "/Images/Backdrop/0?maxWidth=1280&quality=90";
+        }
+        return null;
+    }
+
     public static java.util.List<Card> latest(String libraryId, int limit) {
+        if (!configured()) return new ArrayList<>();
         java.util.List<Card> out = new java.util.ArrayList<>();
         String url = BASE + "/Items?ParentId=" + libraryId + "&Recursive=true"
                 + "&IncludeItemTypes=Movie,Series&SortBy=DateCreated&SortOrder=Descending"
@@ -316,6 +359,7 @@ public final class JellyfinClient {
 
     /** 继续观看（带进度百分比）。 */
     public static java.util.List<Card> resumeCards(int limit) {
+        if (!configured()) return new ArrayList<>();
         java.util.List<Card> out = new java.util.ArrayList<>();
         String url = BASE + "/Users/" + USER_ID + "/Items/Resume?Limit=" + limit
                 + "&MediaTypes=Video&Fields=ProductionYear,SeriesId,SeriesPrimaryImageTag,UserData";
@@ -357,7 +401,7 @@ public final class JellyfinClient {
     }
 
 
-    public static final String USER_ID = "cebd8acb17734b7190f3e731c0e78301";
+    public static String USER_ID = "";  // 由 DeskConfig 注入
 
     /** 第几集开始播：优先「继续观看」，否则第一集。返回 {itemId, 标题}，失败返回 null。 */
     /** 直接播某个条目（电影 / 单集）：返回 {itemId, label, posMs}。 */
@@ -536,6 +580,7 @@ public final class JellyfinClient {
     }
 
     public static java.util.List<Item> resume(int limit) {
+        if (!configured()) return new ArrayList<>();
         java.util.List<Item> out = new java.util.ArrayList<>();
         String url = BASE + "/Users/" + USER_ID + "/Items/Resume?Limit=" + limit
                 + "&MediaTypes=Video&Fields=ProductionYear,SeriesId,SeriesPrimaryImageTag";

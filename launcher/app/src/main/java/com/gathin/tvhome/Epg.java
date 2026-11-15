@@ -29,7 +29,7 @@ import java.util.zip.GZIPInputStream;
 public final class Epg {
 
     private static final String TAG = "CYT-EPG";
-    private static final String URL = "http://epg.808993.xyz/t.xml.gz";
+    static String URL = "";   // 由 DeskConfig 注入（留空则不抓 EPG）
     private static final String CACHE = "epg.tsv";
     private static final long FRESH_MS = 6 * 60 * 60 * 1000L;
     private static final long WINDOW_BACK = 2 * 60 * 60 * 1000L;     // 保留已播 2 小时
@@ -61,6 +61,7 @@ public final class Epg {
     }
 
     private static void download(Context ctx) throws Exception {
+        if (URL == null || URL.trim().isEmpty()) { Log.i(TAG, "未配置 EPG，跳过"); return; }
         long now = System.currentTimeMillis();
         long minEnd = now - WINDOW_BACK;
         long maxStart = now + WINDOW_FORWARD;

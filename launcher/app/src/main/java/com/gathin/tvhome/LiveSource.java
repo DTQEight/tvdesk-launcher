@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 public final class LiveSource {
 
     private static final String TAG = "CYT-LIVE";
-    public static final String M3U = "http://z.zzr.cc/live.php?token=18JanWhxouzPykea&s=1&c=m";
+    public static String M3U = "";   // 由 DeskConfig 注入
     private static final Pattern NAME = Pattern.compile("tvg-name=\"([^\"]*)\"");
     private static final Pattern GROUP = Pattern.compile("group-title=\"([^\"]*)\"");
 
@@ -33,6 +33,10 @@ public final class LiveSource {
 
     /** 先用本地缓存（秒开），缓存过期或不存在再拉网络；过期时后台静默刷新。 */
     public static List<Ch> load(android.content.Context ctx) {
+        if (M3U == null || M3U.trim().isEmpty()) {
+            Log.i(TAG, "未配置直播源，跳过");
+            return new ArrayList<>();
+        }
         if (ctx != null) {
             try {
                 java.io.File f = new java.io.File(ctx.getCacheDir(), CACHE);

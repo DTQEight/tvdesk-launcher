@@ -1,0 +1,12 @@
+{
+  "_说明": "把本文件改名为 desk.json，推到 /sdcard/Android/data/com.gathin.tvhome/files/ 即可一键预置；不配置则相关页面自动隐藏",
+  "jfBase": "http://192.168.1.10:8096",
+  "jfToken": "在 Jellyfin 后台 控制台 → API 密钥 里创建",
+  "jfUser": "在 Jellyfin 后台 用户 页面 URL 里的 userId",
+  "mpBase": "http://192.168.1.10:3000",
+  "mpKey": "MoviePilot 设置 → API → API Key",
+  "libBase": "http://192.168.1.10:8000",
+  "libKey": "2bt0 资源库的 X-API-Key",
+  "liveM3u": "http://192.168.1.10:8080/list.m3u",
+  "epgUrl": "http://epg.example.com/t.xml.gz"
+}

@@ -21,8 +21,8 @@ import java.util.List;
 public final class LibClient {
 
     private static final String TAG = "CYT-LIB";
-    public static final String BASE = "http://192.168.31.52:8000";
-    private static final String KEY = "8t6j6_xW3RRHbWRtgbSGcrpdBABZ5Psd";
+    public static String BASE = "";   // 由 DeskConfig 注入
+    static String KEY = "";            // 由 DeskConfig 注入
 
     private static android.content.Context ctx;
     private static List<Section> cache;
@@ -49,7 +49,12 @@ public final class LibClient {
      * 按片名在资源库里找同名片。
      * GET /api/groups?q=<片名> → [{movie_id,title,image,years,versions,...}]
      */
+    public static boolean configured() {
+        return BASE != null && !BASE.trim().isEmpty() && KEY != null && !KEY.trim().isEmpty();
+    }
+
     public static Hit lookup(String title) {
+        if (!configured()) return null;
         if (title == null || title.trim().isEmpty()) return null;
         String raw = get("/api/groups?q=" + enc(title.trim()) + "&page=1");
         if (raw == null) return null;
@@ -105,6 +110,7 @@ public final class LibClient {
 
     /** 资源库列表（category/sort 由 path 决定）。 */
     public static List<Row> rows(String path) {
+        if (!configured()) return new ArrayList<>();
         List<Row> out = new ArrayList<>();
         String raw = get(path);
         if (raw == null) return out;
@@ -149,6 +155,7 @@ public final class LibClient {
 
     /** 某部片的全部磁力版本。 */
     public static List<Mag> magnets(String movieId) {
+        if (!configured()) return new ArrayList<>();
         List<Mag> out = new ArrayList<>();
         String raw = get("/api/magnets?movie_id=" + enc(movieId));
         if (raw == null) return out;
@@ -218,6 +225,7 @@ public final class LibClient {
     }
 
     public static Movie movie(String id) {
+        if (!configured()) return null;
         String raw = get("/api/movie/" + enc(id));
         if (raw == null) return null;
         try {
