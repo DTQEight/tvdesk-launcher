@@ -175,6 +175,39 @@ adb shell "logcat -d | grep CYT-CFG"
 
 ---
 
+## 权限从哪来（这台机器的实测链路）
+
+电视本身没给 root：`user` 版本、`ro.secure=1`、没有 `su`、`adb root` 不可用。
+但固件同时开了三道闸门，叠起来就能在不 root 的前提下接管桌面：
+
+1. **出厂开着网络 ADB**（`service.adb.tcp.port=5555`）→ 局域网内直接拿到 `shell`
+2. **SELinux 是 `Permissive`** → 策略只记日志、不拦截
+3. **普通 App 能写 `persist.*` 属性** → 而厂商的开机/Home 服务恰好读 `persist.service.homepage.pkg` 决定拉起谁
+
+```
+ADB:5555 → shell(uid 2000) → 装 APK(uid 10029)
+        → App 里 Runtime.exec("setprop", "persist.service.homepage.pkg", "com.gathin.tvhome")
+        → SELinux Permissive 放行 → 写入 /data/property（跨重启保留）
+        → 创维 HomeKey/开机服务读属性 → 开机和 Home 都进 TVDesk
+```
+
+实测证据（logcat 原文）：
+
+```console
+E sky_prop: uid[10029] gid[10029] pid[20051] PROPERTY SET [persist.service.homepage.pkg]: [com.gathin.tvhome]
+```
+
+`uid 10029` 就是本 App（`userId=10029`），它只申请了 `INTERNET` / `ACCESS_NETWORK_STATE` / `ACCESS_WIFI_STATE` / `ACCESS_FINE_LOCATION`，
+没有任何特权权限——**写入成功不是因为它有权限，而是因为 SELinux 没生效**。
+
+重启后依旧指向 TVDesk（`ResumedActivity: com.gathin.tvhome/.MainActivity`，无原厂首页、无开机广告）。
+
+顺带发现两处能力外溢：厂商 provider `content://com.skyworth.tv.sdk.provider` 对三方 App 无鉴权（能随意切 HDMI 源），
+以及 `/system/bin` 里带着 `skybusybox`。
+
+> 完整的发现过程、每一步的命令与原始输出、影响面与加固建议，都在 **[PRIVILEGE-AND-TAKEOVER.md](PRIVILEGE-AND-TAKEOVER.md)**。
+> 只适用于我这一台机器（`1AA45_G5D`）——**请不要拿去做不属于你的设备**，同类问题建议先报厂商。
+
 ## 遥控器操作
 
 | 位置 | 按键 | 行为 |
