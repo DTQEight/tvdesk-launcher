@@ -77,7 +77,7 @@ $ adb shell dumpsys package com.tianci.system | grep -A3 "ContentProvider"
       Authorities: com.tianci.provider
 ```
 
-写了 13 KB 的探针 `com.dsh.sysprobe` 去实际调用（PoC 见清单 V1）：
+写了 13 KB 的探针 **`com.dsh.sysprobe`** 去实际调用（源码与编译方法在 [`tools/sysprobe/`](tools/sysprobe/)，PoC 见清单 V1）：
 
 ```java
 Uri URI = Uri.parse("content://com.tianci.provider");
@@ -196,6 +196,37 @@ adb reboot
 | **V6** | `persist.sys.disable.install.verify=1` | shell | 静默装包，不用电视上点确认 |
 
 `V1 + V2 + V5` 是端到端跑通的那条链；`V4` 复核仍可从普通应用调通。
+
+---
+
+## 三½、那个「专门用来拿权限的 App」就是 `sysprobe`
+
+有个东西值得单独说清楚：确实存在一个专用 App —— **`com.dsh.sysprobe`**，13 KB，零权限。
+
+它不是"一键提权器"，装上去不会给你 root，它做的是**验证**：
+
+| 入口 | 传参 | 测什么 |
+|---|---|---|
+| 图标直接点 | `cmd=6` | V1：让 system 去 `mkdir /data/local/tmp/probe_<ts>` |
+| `am start --ei cmdIndex 6 --es cmdParam /data/system/poc` | 自定 | V1：往 system 可写目录造东西 |
+| `am start --ei cmdIndex 2 --es cmdParam x.apk` | 自定 | V1：让 system 帮忙 `pm install` |
+| `am start --es sock get:gamemode` | 自定 | V4：跟 root 守护进程对话 / 注入按键 |
+
+屏幕上直接打出 `uid=` / `RESULT: Bundle[{ret=true}]`，同时进 logcat（tag `SYSPROBE`）。
+
+```console
+I SYSPROBE: uid=10048
+I SYSPROBE: RESULT: Bundle[{ret=true}]
+I SYSPROBE: SOCK RECV(13): gamemode:{0}
+```
+
+**注意 `uid=10048`（普通应用）和 `ret=true` 同时出现** —— 这就是"没有鉴权"的直接证据。
+
+源码、编译命令（aapt2/d8/apksigner，不用 Gradle）、预编译 APK：
+**[tools/sysprobe/](tools/sysprobe/)**。
+
+> 为什么它不算"拿到权限"：它自己能做的只有那 3 条白名单命令（`mkdir`/`pm install`/`reboot`）+ socket 对话。
+> 真正把开机行为改掉的是「V2 造文件 + 两条 persist 属性 + bootintent.xml 规则」，那一半靠 shell，不靠这个 App。
 
 ---
 

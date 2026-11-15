@@ -207,6 +207,7 @@ ADB(5555) → shell → dump /system → REA+jadx 逆向 SkySystemService.apk
 开机约 20 秒直接进 TVDesk，酷开首页和开机广告不再出现，**全程无 root、没改 `/system` 一个字节**。
 
 > - 完整漏洞清单（CVSS、PoC、证据快照、修复优先级）：**[docs/创维65G5D-安全漏洞清单.md](docs/创维65G5D-安全漏洞清单.md)**
+> - 那个专门验证权限的 13 KB 探针 App（`com.dsh.sysprobe`，源码 + 编译命令 + 预编译 APK）：**[tools/sysprobe/](tools/sysprobe/)**
 > - 发现过程 / 工具链 / 每一步的原始输出 / 能力边界 / 加固建议：**[PRIVILEGE-AND-TAKEOVER.md](PRIVILEGE-AND-TAKEOVER.md)**
 >
 > 仅适用于我这台 `1AA45_G5D`（固件 `PPR1.180610.011.20241227`）。**请不要拿去做不属于你的设备**，同类问题建议先报厂商。
