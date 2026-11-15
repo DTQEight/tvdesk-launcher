@@ -175,38 +175,41 @@ adb shell "logcat -d | grep CYT-CFG"
 
 ---
 
-## 权限从哪来（这台机器的实测链路）
+## 权限从哪来（逆向 + 组合利用的真实过程）
 
-电视本身没给 root：`user` 版本、`ro.secure=1`、没有 `su`、`adb root` 不可用。
-但固件同时开了三道闸门，叠起来就能在不 root 的前提下接管桌面：
+这台机器没给 root（`user` 版本、`ro.debuggable=0`、无 `su`、`/data` 块设备 `0600`）。
+现在的桌面能顶替酷开首页、开机直达直播，靠的是**逆向系统应用后组合出来的三条链**：
 
-1. **出厂开着网络 ADB**（`service.adb.tcp.port=5555`）→ 局域网内直接拿到 `shell`
-2. **SELinux 是 `Permissive`** → 策略只记日志、不拦截
-3. **普通 App 能写 `persist.*` 属性** → 而厂商的开机/Home 服务恰好读 `persist.service.homepage.pkg` 决定拉起谁
+| 环节 | 缺陷 | 起点 |
+|---|---|---|
+| **V1** | `com.tianci.provider` 的 `execLinuxCmd` **无鉴权**，可让 system(uid 1000) 执行 `mkdir`/`pm install`/`reboot` | 任意已装应用 |
+| **V2** | `/data/log` 是 `0777`，root 的 `logcat -f` 跟随符号链接 → 在 root 目录造文件 | 应用或 shell |
+| **V5** | SELinux 全局 `Permissive`，以上每环都不被拦 | — |
+| **V3** | Permissive 下 `setprop ctl.start/stop` 可启停任意 init 服务 | shell |
+| **V4** | root 守护进程 socket `/data/socketsys/sys_info` 权限 `srwx---rwx` | 任意已装应用 |
+| **V6** | `persist.sys.disable.install.verify=1` → 静默装包 | shell |
+
+**发现路径**：`adb` 拿到 shell → 全量 dump `/system`（3,225 文件 / 1.67 GB）→
+用 **REA 6.7.0 + jadx** 反编译 `com.tianci.system`（`SkySystemService.apk`）→
+命中 `CommonProvider.execLinuxCmd` / `SystemContentProvider` → 写探针实测 `ret=true`；
+再读 `/system/etc/bootintent.xml` 发现开机规则是「文件存在 **且** 属性非空」的组合条件，
+于是用 V2 造出 `/data/ccos/customStart`，配上 `persist.sys.custom.pkg/.cls`，改写了开机行为。
 
 ```
-ADB:5555 → shell(uid 2000) → 装 APK(uid 10029)
-        → App 里 Runtime.exec("setprop", "persist.service.homepage.pkg", "com.gathin.tvhome")
-        → SELinux Permissive 放行 → 写入 /data/property（跨重启保留）
-        → 创维 HomeKey/开机服务读属性 → 开机和 Home 都进 TVDesk
+ADB(5555) → shell → dump /system → REA+jadx 逆向 SkySystemService.apk
+   → V1: content://com.tianci.provider / execLinuxCmd → system 身份 mkdir
+   → V2: ln -sf /data/ccos/customStart /data/log/log.txt → root logcat 造出文件
+   → V3/V5: Permissive → setprop ctl.start getlogservice 触发
+   → setprop persist.sys.custom.pkg/.cls = com.gathin.tvhome(.MainActivity)
+   → 开机: bootintent.xml #17「文件存在 + 属性非空」→ startActivity(TVDesk)
 ```
 
-实测证据（logcat 原文）：
+开机约 20 秒直接进 TVDesk，酷开首页和开机广告不再出现，**全程无 root、没改 `/system` 一个字节**。
 
-```console
-E sky_prop: uid[10029] gid[10029] pid[20051] PROPERTY SET [persist.service.homepage.pkg]: [com.gathin.tvhome]
-```
-
-`uid 10029` 就是本 App（`userId=10029`），它只申请了 `INTERNET` / `ACCESS_NETWORK_STATE` / `ACCESS_WIFI_STATE` / `ACCESS_FINE_LOCATION`，
-没有任何特权权限——**写入成功不是因为它有权限，而是因为 SELinux 没生效**。
-
-重启后依旧指向 TVDesk（`ResumedActivity: com.gathin.tvhome/.MainActivity`，无原厂首页、无开机广告）。
-
-顺带发现两处能力外溢：厂商 provider `content://com.skyworth.tv.sdk.provider` 对三方 App 无鉴权（能随意切 HDMI 源），
-以及 `/system/bin` 里带着 `skybusybox`。
-
-> 完整的发现过程、每一步的命令与原始输出、影响面与加固建议，都在 **[PRIVILEGE-AND-TAKEOVER.md](PRIVILEGE-AND-TAKEOVER.md)**。
-> 只适用于我这一台机器（`1AA45_G5D`）——**请不要拿去做不属于你的设备**，同类问题建议先报厂商。
+> - 完整漏洞清单（CVSS、PoC、证据快照、修复优先级）：**[docs/创维65G5D-安全漏洞清单.md](docs/创维65G5D-安全漏洞清单.md)**
+> - 发现过程 / 工具链 / 每一步的原始输出 / 能力边界 / 加固建议：**[PRIVILEGE-AND-TAKEOVER.md](PRIVILEGE-AND-TAKEOVER.md)**
+>
+> 仅适用于我这台 `1AA45_G5D`（固件 `PPR1.180610.011.20241227`）。**请不要拿去做不属于你的设备**，同类问题建议先报厂商。
 
 ## 遥控器操作
 
